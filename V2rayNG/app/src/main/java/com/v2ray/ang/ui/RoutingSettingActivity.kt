@@ -50,7 +50,6 @@ import com.v2ray.ang.compose.AppDivider
 import com.v2ray.ang.compose.AppTopBar
 import com.v2ray.ang.compose.ReorderableListItem
 import com.v2ray.ang.compose.SelectListDialog
-import com.v2ray.ang.compose.colorConfigType
 import com.v2ray.ang.compose.colorFabActive
 import com.v2ray.ang.compose.verticalScrollbar
 import com.v2ray.ang.extension.toastError
@@ -323,7 +322,7 @@ fun RoutingSettingScreen(
                                     Text(
                                         text = ruleset.outboundTag,
                                         style = MaterialTheme.typography.labelMedium,
-                                        color = colorConfigType
+                                        color = MaterialTheme.colorScheme.secondary
                                     )
                                 }
                             }

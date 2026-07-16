@@ -66,6 +66,7 @@ import com.google.zxing.common.HybridBinarizer
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.compose.AppTopBar
+import com.v2ray.ang.compose.colorBrandRed
 import com.v2ray.ang.enums.PermissionType
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.handler.MmkvManager
@@ -277,7 +278,7 @@ fun ScannerOverlay() {
     val scanBoxSize = 250.dp
     val cornerLength = 24.dp
     val cornerWidth = 3.dp
-    val cornerColor = Color(0xFF4CAF50)
+    val cornerColor = colorBrandRed
 
     Box(modifier = Modifier.fillMaxSize()) {
         Canvas(modifier = Modifier.fillMaxSize()) {

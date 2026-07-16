@@ -10,63 +10,90 @@ import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.StartOffset
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.text.style.TextAlign
+import com.v2ray.ang.compose.SettingsMenuItem
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
@@ -74,12 +101,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.Stable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -91,21 +115,15 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineBreak
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -121,7 +139,7 @@ import com.v2ray.ang.compose.LocalDarkTheme
 import com.v2ray.ang.compose.QRCodeDialog
 import com.v2ray.ang.compose.ReorderableGridItem
 import com.v2ray.ang.compose.ReorderableListItem
-import com.v2ray.ang.compose.colorConfigType
+import com.v2ray.ang.compose.colorBrandCream
 import com.v2ray.ang.compose.colorFabActive
 import com.v2ray.ang.compose.colorFabInactiveDark
 import com.v2ray.ang.compose.colorFabInactiveLight
@@ -622,54 +640,297 @@ private fun MainDialogs(
 }
 
 @Composable
-private fun MainBottomBar(
-    displayText: String,
+private fun HomeTab(
+    isRunning: Boolean,
+    statusText: String,
+    selectedProfile: ProfileItem?,
+    isDarkTheme: Boolean,
+    onConnectClick: () -> Unit,
+    onStatusClick: () -> Unit,
+    onOpenServers: () -> Unit,
+    onImportClipboard: () -> Unit,
+    onImportQRcode: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_a4_logo),
+                contentDescription = null,
+                modifier = Modifier.size(36.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = stringResource(R.string.app_name),
+                style = MaterialTheme.typography.titleLarge
+            )
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            ConnectButton(
+                isRunning = isRunning,
+                isDarkTheme = isDarkTheme,
+                onClick = onConnectClick
+            )
+            Spacer(modifier = Modifier.height(28.dp))
+            AnimatedContent(
+                targetState = isRunning,
+                transitionSpec = {
+                    (slideInVertically(animationSpec = tween(250)) { it / 2 } + fadeIn(tween(250))) togetherWith
+                        (slideOutVertically(animationSpec = tween(150)) { -it / 2 } + fadeOut(tween(150)))
+                },
+                label = "stateLabel"
+            ) { running ->
+                Text(
+                    text = stringResource(
+                        if (running) R.string.state_connected else R.string.state_disconnected
+                    ),
+                    style = MaterialTheme.typography.headlineSmall
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Crossfade(
+                targetState = statusText,
+                label = "statusCaption",
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onStatusClick)
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+            ) { text ->
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        AnimatedContent(
+            targetState = selectedProfile,
+            transitionSpec = {
+                (slideInVertically(animationSpec = tween(300)) { it / 3 } + fadeIn(tween(300))) togetherWith
+                    (slideOutVertically(animationSpec = tween(150)) { it / 3 } + fadeOut(tween(150)))
+            },
+            label = "serverCard",
+            modifier = Modifier.fillMaxWidth()
+        ) { profile ->
+            if (profile != null) {
+                SelectedServerCard(profile = profile, onClick = onOpenServers)
+            } else {
+                EmptyKeyCard(
+                    onImportClipboard = onImportClipboard,
+                    onImportQRcode = onImportQRcode
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+    }
+}
+
+@Composable
+private fun ConnectButton(
     isRunning: Boolean,
     isDarkTheme: Boolean,
-    onTestClick: () -> Unit,
-    onFabClick: () -> Unit
+    onClick: () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            AppDivider()
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .height(64.dp)
-                    .clickable(onClick = onTestClick),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 0.dp
-            ) {
-                Row(
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.92f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "connectPressScale"
+    )
+    val buttonColor by animateColorAsState(
+        targetValue = if (isRunning) colorFabActive
+        else if (isDarkTheme) colorFabInactiveDark
+        else colorFabInactiveLight,
+        animationSpec = tween(500),
+        label = "connectButtonColor"
+    )
+
+    Box(contentAlignment = Alignment.Center) {
+        if (isRunning) {
+            val transition = rememberInfiniteTransition(label = "connectPulse")
+            val ringSpec = tween<Float>(2200, easing = LinearEasing)
+            val ring1 by transition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(ringSpec),
+                label = "connectRing1"
+            )
+            val ring2 by transition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(ringSpec, initialStartOffset = StartOffset(1100)),
+                label = "connectRing2"
+            )
+            listOf(ring1, ring2).forEach { progress ->
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(text = displayText, style = MaterialTheme.typography.bodyMedium)
+                        .size(170.dp)
+                        .scale(1f + 0.35f * progress)
+                        .border(
+                            width = 2.dp,
+                            color = colorFabActive.copy(alpha = (1f - progress) * 0.45f),
+                            shape = CircleShape
+                        )
+                )
+            }
+            val radarAngle by transition.animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(tween(3200, easing = LinearEasing)),
+                label = "connectRadar"
+            )
+            Canvas(modifier = Modifier.size(198.dp)) {
+                rotate(radarAngle) {
+                    drawArc(
+                        brush = Brush.sweepGradient(
+                            listOf(Color.Transparent, colorFabActive)
+                        ),
+                        startAngle = 30f,
+                        sweepAngle = 300f,
+                        useCenter = false,
+                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                    )
                 }
             }
         }
-        FloatingActionButton(
-            onClick = onFabClick,
+        Surface(
+            onClick = onClick,
+            shape = CircleShape,
+            color = buttonColor,
+            shadowElevation = 6.dp,
+            interactionSource = interactionSource,
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = 24.dp)
-                .offset(y = (-28).dp)
-                .navigationBarsPadding(),
-            containerColor = if (isRunning) colorFabActive
-            else if (isDarkTheme) colorFabInactiveDark
-            else colorFabInactiveLight
+                .size(170.dp)
+                .scale(pressScale)
         ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                AnimatedContent(
+                    targetState = isRunning,
+                    transitionSpec = {
+                        (scaleIn(initialScale = 0.5f, animationSpec = tween(200)) + fadeIn(tween(200))) togetherWith
+                            (scaleOut(targetScale = 0.5f, animationSpec = tween(150)) + fadeOut(tween(150)))
+                    },
+                    label = "connectIcon"
+                ) { running ->
+                    Icon(
+                        painter = if (running) painterResource(R.drawable.ic_stop_24dp)
+                        else painterResource(R.drawable.ic_play_24dp),
+                        contentDescription = if (running) "Stop" else "Start",
+                        tint = colorBrandCream,
+                        modifier = Modifier.size(56.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectedServerCard(profile: ProfileItem, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.home_current_server),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = profile.remarks,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = getProtocolDescription(profile),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.secondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Icon(
-                painter = if (isRunning) painterResource(R.drawable.ic_stop_24dp)
-                else painterResource(R.drawable.ic_play_24dp),
-                contentDescription = if (isRunning) "Stop" else "Start",
-                tint = Color.White,
-                modifier = Modifier.size(24.dp)
+                painter = painterResource(R.drawable.ic_arrow_back_24dp),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.rotate(180f)
             )
+        }
+    }
+}
+
+@Composable
+private fun EmptyKeyCard(
+    onImportClipboard: () -> Unit,
+    onImportQRcode: () -> Unit
+) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                text = stringResource(R.string.home_no_server_title),
+                style = MaterialTheme.typography.titleMedium
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.home_no_server_summary),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Row {
+                Button(
+                    onClick = onImportClipboard,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondary,
+                        contentColor = MaterialTheme.colorScheme.onSecondary
+                    )
+                ) {
+                    Text(stringResource(R.string.home_paste_key), maxLines = 1)
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                OutlinedButton(
+                    onClick = onImportQRcode,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(stringResource(R.string.home_scan_qr), maxLines = 1)
+                }
+            }
         }
     }
 }
@@ -816,6 +1077,10 @@ private fun GroupPagerPage(
     )
 }
 
+private const val TAB_HOME = 0
+private const val TAB_SERVERS = 1
+private const val TAB_MORE = 2
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
@@ -846,7 +1111,6 @@ fun MainScreen(
     shareMethodEntries: List<String>,
     shareMethodMoreEntries: List<String>
 ) {
-    val context = LocalContext.current
     val uiState by mainViewModel.uiState.collectAsStateWithLifecycle()
     val groups = uiState.groups
     val isLoading = uiState.isLoading
@@ -857,7 +1121,6 @@ fun MainScreen(
     val confirmRemove = uiState.confirmRemove
 
     val isDarkTheme = LocalDarkTheme.current
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var showSearch by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -879,7 +1142,6 @@ fun MainScreen(
     val lazyListStates = remember { mutableStateMapOf<String, LazyListState>() }
     val lazyGridStates = remember { mutableStateMapOf<String, LazyGridState>() }
 
-    val drawerScrollState = rememberScrollState()
     val importMenuScrollState = rememberScrollState()
     val moreMenuScrollState = rememberScrollState()
 
@@ -1010,105 +1272,17 @@ fun MainScreen(
         QRCodeDialog(bitmap = showQRCodeBitmap, onDismiss = { showQRCodeBitmap = null })
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            ModalDrawerSheet(
-                modifier = Modifier
-                    .fillMaxWidth(0.75f)
-                    .navigationBarsPadding(),
-                drawerContainerColor = MaterialTheme.colorScheme.surface
-            ) {
-                Column(
-                    modifier = Modifier
-                        .verticalScroll(drawerScrollState)
-                        .verticalScrollbar(drawerScrollState)
-                        .padding(bottom = 80.dp)
-                ) {
-                    Surface(modifier = Modifier
-                        .fillMaxWidth()
-                        .height(160.dp)) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Text(
-                                text = stringResource(R.string.app_name),
-                                style = MaterialTheme.typography.headlineLarge.copy(
-                                    fontFamily = FontFamily(Font(R.font.montserrat_thin)),
-                                    fontWeight = FontWeight.Thin
-                                ),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                    listOf(
-                        Triple(
-                            R.drawable.ic_subscriptions_24dp,
-                            R.string.title_sub_setting,
-                            "sub_setting"
-                        ),
-                        Triple(
-                            R.drawable.ic_per_apps_24dp,
-                            R.string.per_app_proxy_settings,
-                            "per_app_proxy"
-                        ),
-                        Triple(
-                            R.drawable.ic_routing_24dp,
-                            R.string.routing_settings_title,
-                            "routing_setting"
-                        ),
-                        Triple(
-                            R.drawable.ic_file_24dp,
-                            R.string.title_user_asset_setting,
-                            "user_asset"
-                        ),
-                        Triple(R.drawable.ic_settings_24dp, R.string.title_settings, "settings"),
-                    ).forEach { (iconRes, labelRes, route) ->
-                        DrawerMenuItem(
-                            icon = painterResource(iconRes),
-                            label = stringResource(labelRes),
-                            onClick = { scope.launch { drawerState.close() }; onNavigate(route) }
-                        )
-                    }
-                    AppDivider(modifier = Modifier.padding(vertical = 4.dp))
-                    listOf(
-                        Triple(
-                            R.drawable.ic_promotion_24dp,
-                            R.string.title_pref_promotion,
-                            "promotion"
-                        ),
-                        Triple(R.drawable.ic_logcat_24dp, R.string.title_logcat, "logcat"),
-                        Triple(
-                            R.drawable.ic_check_update_24dp,
-                            R.string.update_check_for_update,
-                            "check_update"
-                        ),
-                        Triple(
-                            R.drawable.ic_restore_24dp,
-                            R.string.title_configuration_backup_restore,
-                            "backup_restore"
-                        ),
-                        Triple(R.drawable.ic_about_24dp, R.string.title_about, "about"),
-                    ).forEach { (iconRes, labelRes, route) ->
-                        DrawerMenuItem(
-                            icon = painterResource(iconRes),
-                            label = stringResource(labelRes),
-                            onClick = { scope.launch { drawerState.close() }; onNavigate(route) }
-                        )
-                    }
-                }
-            }
-        }
-    ) {
-        Scaffold(
-            contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
-            topBar = {
+    var selectedTab by rememberSaveable { mutableIntStateOf(TAB_HOME) }
+    val selectedProfile = remember(selectedGuid, groups) {
+        selectedGuid?.let { MmkvManager.decodeServerConfig(it) }
+    }
+
+    Scaffold(
+        contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
+        topBar = {
+            if (selectedTab == TAB_SERVERS) {
                 AppTopBar(
-                    title = stringResource(R.string.title_server),
+                    title = stringResource(R.string.nav_servers),
                     onBackClick = {},
                     isLoading = isLoading,
                     isSearchActive = showSearch,
@@ -1133,13 +1307,6 @@ fun MainScreen(
                                 Icon(
                                     painterResource(R.drawable.ic_arrow_back_24dp),
                                     contentDescription = "Back"
-                                )
-                            }
-                        } else {
-                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                Icon(
-                                    painterResource(R.drawable.ic_menu_24dp),
-                                    contentDescription = "Menu"
                                 )
                             }
                         }
@@ -1271,80 +1438,137 @@ fun MainScreen(
                         }
                     }
                 )
-            },
-            bottomBar = {
-                MainBottomBar(
-                    displayText = displayText,
-                    isRunning = isRunning,
-                    isDarkTheme = isDarkTheme,
-                    onTestClick = onTestClick,
-                    onFabClick = onFabClick
-                )
-            },
-            floatingActionButton = {},
-        ) { innerPadding ->
-            val layoutDirection = LocalLayoutDirection.current
-
-            if (groups.isNotEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
+            }
+        },
+        bottomBar = {
+            Column {
+                AppDivider()
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 0.dp
                 ) {
-                    if (groups.size > 1) {
-                        GroupTabBar(
-                            groups = groups,
-                            selectedTabIndex = pagerState.currentPage.coerceIn(0, groups.lastIndex),
-                            mainViewModel = mainViewModel,
-                            onTabClick = { targetIndex ->
-                                scope.launch {
-                                    pagerState.navigateToPageOptimized(
-                                        targetPage = targetIndex,
-                                        animateAdjacentPage = true
-                                    )
-                                }
-                            }
-                        )
-                    }
-
-                    HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier.fillMaxSize(),
-                        userScrollEnabled = true,
-                        beyondViewportPageCount = 1,
-                        key = { page -> groups.getOrNull(page)?.id ?: "group-page-$page" }
-                    ) { page ->
-                        val group = groups.getOrNull(page) ?: return@HorizontalPager
-
-                        GroupPagerPage(
-                            groupId = group.id,
-                            mainViewModel = mainViewModel,
-                            selectedGuid = selectedGuid,
-                            doubleColumnDisplay = doubleColumnDisplay,
-                            confirmRemove = confirmRemove,
-                            searchQuery = searchQuery,
-                            lazyListStates = lazyListStates,
-                            lazyGridStates = lazyGridStates,
-                            onSelectServer = onSelectServer,
-                            onEditServer = onEditServer,
-                            onShareServer = { guid, profile ->
-                                shareTarget = Triple(guid, profile, false)
+                    listOf(
+                        Triple(R.drawable.ic_home_24dp, R.string.nav_home, TAB_HOME),
+                        Triple(R.drawable.ic_dns_24dp, R.string.nav_servers, TAB_SERVERS),
+                        Triple(R.drawable.ic_more_horiz_24dp, R.string.nav_more, TAB_MORE),
+                    ).forEach { (iconRes, labelRes, tab) ->
+                        NavigationBarItem(
+                            selected = selectedTab == tab,
+                            onClick = { selectedTab = tab },
+                            icon = {
+                                val iconScale by animateFloatAsState(
+                                    targetValue = if (selectedTab == tab) 1.15f else 1f,
+                                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                                    label = "navIconScale"
+                                )
+                                Icon(
+                                    painterResource(iconRes),
+                                    contentDescription = null,
+                                    modifier = Modifier.scale(iconScale)
+                                )
                             },
-                            onMoreServer = { guid, profile ->
-                                shareTarget = Triple(guid, profile, true)
-                            },
-                            onRemoveServer = { guid ->
-                                if (confirmRemove) showRemoveConfirm = guid
-                                else onRemoveServer(guid)
-                            },
-                            contentPadding = PaddingValues(
-                                start = 0.dp,
-                                top = 0.dp,
-                                end = 0.dp,
-                                bottom = 80.dp
+                            label = { Text(stringResource(labelRes)) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.inverseOnSurface,
+                                selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                indicatorColor = MaterialTheme.colorScheme.inverseSurface,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         )
                     }
+                }
+            }
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            AnimatedContent(
+                targetState = selectedTab,
+                transitionSpec = {
+                    val dir = if (targetState > initialState) 1 else -1
+                    (slideInHorizontally(animationSpec = tween(260)) { dir * it / 10 } + fadeIn(tween(260))) togetherWith
+                        (slideOutHorizontally(animationSpec = tween(200)) { -dir * it / 10 } + fadeOut(tween(120)))
+                },
+                label = "tabContent",
+                modifier = Modifier.fillMaxSize()
+            ) { tab ->
+                when (tab) {
+                    TAB_HOME -> HomeTab(
+                        isRunning = isRunning,
+                        statusText = displayText,
+                        selectedProfile = selectedProfile,
+                        isDarkTheme = isDarkTheme,
+                        onConnectClick = onFabClick,
+                        onStatusClick = onTestClick,
+                        onOpenServers = { selectedTab = TAB_SERVERS },
+                        onImportClipboard = onImportClipboard,
+                        onImportQRcode = onImportQRcode
+                    )
+
+                    TAB_SERVERS -> Column(modifier = Modifier.fillMaxSize()) {
+                        if (groups.isNotEmpty()) {
+                            if (groups.size > 1) {
+                                GroupTabBar(
+                                    groups = groups,
+                                    selectedTabIndex = pagerState.currentPage.coerceIn(0, groups.lastIndex),
+                                    mainViewModel = mainViewModel,
+                                    onTabClick = { targetIndex ->
+                                        scope.launch {
+                                            pagerState.navigateToPageOptimized(
+                                                targetPage = targetIndex,
+                                                animateAdjacentPage = true
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+
+                            HorizontalPager(
+                                state = pagerState,
+                                modifier = Modifier.fillMaxSize(),
+                                userScrollEnabled = true,
+                                beyondViewportPageCount = 1,
+                                key = { page -> groups.getOrNull(page)?.id ?: "group-page-$page" }
+                            ) { page ->
+                                val group = groups.getOrNull(page) ?: return@HorizontalPager
+
+                                GroupPagerPage(
+                                    groupId = group.id,
+                                    mainViewModel = mainViewModel,
+                                    selectedGuid = selectedGuid,
+                                    doubleColumnDisplay = doubleColumnDisplay,
+                                    confirmRemove = confirmRemove,
+                                    searchQuery = searchQuery,
+                                    lazyListStates = lazyListStates,
+                                    lazyGridStates = lazyGridStates,
+                                    onSelectServer = onSelectServer,
+                                    onEditServer = onEditServer,
+                                    onShareServer = { guid, profile ->
+                                        shareTarget = Triple(guid, profile, false)
+                                    },
+                                    onMoreServer = { guid, profile ->
+                                        shareTarget = Triple(guid, profile, true)
+                                    },
+                                    onRemoveServer = { guid ->
+                                        if (confirmRemove) showRemoveConfirm = guid
+                                        else onRemoveServer(guid)
+                                    },
+                                    contentPadding = PaddingValues(
+                                        start = 16.dp,
+                                        top = 12.dp,
+                                        end = 16.dp,
+                                        bottom = 16.dp
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    else -> MoreTab(onNavigate = onNavigate)
                 }
             }
         }
@@ -1383,14 +1607,17 @@ private fun ServerListPage(
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             state = gridState,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScrollbar(gridState),
             contentPadding = contentPadding
         ) {
-            itemsIndexed(items = servers, key = { _, item -> item.guid }) { _, serverCache ->
+            itemsIndexed(items = servers, key = { _, item -> item.guid }) { index, serverCache ->
                 val content: @Composable () -> Unit = {
                     ServerItemColumn(
+                        index = index,
                         serverCache = serverCache,
                         selectedGuid = selectedGuid,
                         subscriptionId = subscriptionId,
@@ -1413,7 +1640,7 @@ private fun ServerListPage(
                         ) { content() }
                     }
                 } else {
-                    content()
+                    Box(modifier = Modifier.animateItem()) { content() }
                 }
             }
         }
@@ -1429,12 +1656,13 @@ private fun ServerListPage(
 
         LazyColumn(
             state = listState,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScrollbar(listState),
             contentPadding = contentPadding
         ) {
-            itemsIndexed(items = servers, key = { _, item -> item.guid }) { _, serverCache ->
+            itemsIndexed(items = servers, key = { _, item -> item.guid }) { index, serverCache ->
                 if (canReorder && reorderableState != null) {
                     ReorderableItem(
                         reorderableState,
@@ -1445,6 +1673,7 @@ private fun ServerListPage(
                             isDragging = isDragging
                         ) {
                             ServerItemRow(
+                                index = index,
                                 serverCache = serverCache,
                                 selectedGuid = selectedGuid,
                                 subscriptionId = subscriptionId,
@@ -1455,20 +1684,21 @@ private fun ServerListPage(
                                 onRemoveServer = onRemoveServer
                             )
                         }
-                        AppDivider(modifier = Modifier.padding(horizontal = 12.dp))
                     }
                 } else {
-                    ServerItemRow(
-                        serverCache = serverCache,
-                        selectedGuid = selectedGuid,
-                        subscriptionId = subscriptionId,
-                        onSelectServer = onSelectServer,
-                        onEditServer = onEditServer,
-                        onShareServer = onShareServer,
-                        onMoreServer = onMoreServer,
-                        onRemoveServer = onRemoveServer
-                    )
-                    AppDivider(modifier = Modifier.padding(horizontal = 12.dp))
+                    Box(modifier = Modifier.animateItem()) {
+                        ServerItemRow(
+                            index = index,
+                            serverCache = serverCache,
+                            selectedGuid = selectedGuid,
+                            subscriptionId = subscriptionId,
+                            onSelectServer = onSelectServer,
+                            onEditServer = onEditServer,
+                            onShareServer = onShareServer,
+                            onMoreServer = onMoreServer,
+                            onRemoveServer = onRemoveServer
+                        )
+                    }
                 }
             }
         }
@@ -1477,6 +1707,7 @@ private fun ServerListPage(
 
 @Composable
 private fun ServerItemRow(
+    index: Int,
     serverCache: ServersCache,
     selectedGuid: String?,
     subscriptionId: String,
@@ -1493,6 +1724,7 @@ private fun ServerItemRow(
     } else ""
 
     ServerListItem(
+        index = index,
         remarks = profile.remarks,
         statistics = profile.description.nullIfBlank()
             ?: AngConfigManager.generateDescription(profile),
@@ -1512,6 +1744,7 @@ private fun ServerItemRow(
 
 @Composable
 private fun ServerItemColumn(
+    index: Int,
     serverCache: ServersCache,
     selectedGuid: String?,
     subscriptionId: String,
@@ -1529,6 +1762,7 @@ private fun ServerItemColumn(
 
     Column {
         ServerListItem(
+            index = index,
             remarks = profile.remarks,
             statistics = profile.description.nullIfBlank() ?: AngConfigManager.generateDescription(profile),
             typeDescription = getProtocolDescription(profile),
@@ -1543,12 +1777,12 @@ private fun ServerItemColumn(
             onRemove = { onRemoveServer(serverCache.guid) },
             onMore = { onMoreServer(serverCache.guid, profile) }
         )
-        AppDivider(modifier = Modifier.padding(horizontal = 12.dp))
     }
 }
 
 @Composable
 fun ServerListItem(
+    index: Int,
     remarks: String,
     statistics: String,
     typeDescription: String,
@@ -1565,20 +1799,45 @@ fun ServerListItem(
     modifier: Modifier = Modifier,
     dragModifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth().height(IntrinsicSize.Min).clickable(onClick = onClick).then(dragModifier)
-    ) {
-        Box(Modifier.width(10.dp).fillMaxHeight()) {
-            if (isSelected) {
-                Row {
-                    Spacer(Modifier.width(6.dp))
-                    Box(Modifier.width(4.dp).fillMaxHeight().padding(vertical = 10.dp).background(colorFabActive))
-                }
-            }
-        }
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected) colorFabActive else Color.Transparent,
+        animationSpec = tween(300),
+        label = "cardBorder"
+    )
+    val badgeColor by animateColorAsState(
+        targetValue = if (isSelected) colorFabActive else MaterialTheme.colorScheme.inverseSurface,
+        animationSpec = tween(300),
+        label = "cardBadge"
+    )
+    val badgeTextColor by animateColorAsState(
+        targetValue = if (isSelected) colorBrandCream else MaterialTheme.colorScheme.inverseOnSurface,
+        animationSpec = tween(300),
+        label = "cardBadgeText"
+    )
 
-        Column(Modifier.weight(1f).padding(start = 8.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)) {
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.5.dp, borderColor),
+        modifier = modifier.fillMaxWidth().then(dragModifier)
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(badgeColor),
+                    Alignment.Center
+                ) {
+                    Text(
+                        "%02d".format(index + 1),
+                        Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        color = badgeTextColor
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
                 Text(remarks, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge.copy(lineBreak = LineBreak.Paragraph), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (doubleColumnDisplay) {
                     IconButton(onClick = onMore, Modifier.size(36.dp)) {
@@ -1601,45 +1860,64 @@ fun ServerListItem(
             }
             Spacer(modifier = Modifier.height(6.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(typeDescription, style = MaterialTheme.typography.bodySmall, color = colorConfigType, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(testResult, style = MaterialTheme.typography.bodySmall, color = if (testDelayMillis < 0L) colorPingRed else colorPing, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(typeDescription, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                AnimatedContent(
+                    targetState = testResult,
+                    transitionSpec = {
+                        (slideInVertically(animationSpec = tween(220)) { it } + fadeIn(tween(220))) togetherWith
+                            (slideOutVertically(animationSpec = tween(120)) { -it } + fadeOut(tween(120)))
+                    },
+                    label = "pingResult"
+                ) { result ->
+                    Text(result, style = MaterialTheme.typography.bodySmall, color = if (testDelayMillis < 0L) colorPingRed else colorPing, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
     }
 }
 
 @Composable
-fun DrawerMenuItem(
-    icon: Painter,
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    selected: Boolean = false
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            .clickable(onClick = onClick)
-            .background(
-                if (selected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
-                else Color.Transparent
-            )
-            .padding(horizontal = 16.dp, vertical = 0.dp),
-        verticalAlignment = Alignment.CenterVertically
+private fun MoreTab(onNavigate: (String) -> Unit) {
+    val scrollState = rememberScrollState()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .verticalScrollbar(scrollState)
     ) {
-        Icon(
-            painter = icon,
-            contentDescription = null,
-            modifier = Modifier.size(24.dp),
-            tint = MaterialTheme.colorScheme.onSurface
-        )
-        Spacer(modifier = Modifier.width(12.dp))
         Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface
+            text = stringResource(R.string.nav_more),
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)
         )
+        listOf(
+            Triple(R.drawable.ic_subscriptions_24dp, R.string.title_sub_setting, "sub_setting"),
+            Triple(R.drawable.ic_per_apps_24dp, R.string.per_app_proxy_settings, "per_app_proxy"),
+            Triple(R.drawable.ic_routing_24dp, R.string.routing_settings_title, "routing_setting"),
+            Triple(R.drawable.ic_file_24dp, R.string.title_user_asset_setting, "user_asset"),
+            Triple(R.drawable.ic_settings_24dp, R.string.title_settings, "settings"),
+        ).forEach { (iconRes, labelRes, route) ->
+            SettingsMenuItem(
+                icon = painterResource(iconRes),
+                title = stringResource(labelRes),
+                onClick = { onNavigate(route) }
+            )
+        }
+        AppDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        listOf(
+            Triple(R.drawable.ic_promotion_24dp, R.string.title_pref_promotion, "promotion"),
+            Triple(R.drawable.ic_logcat_24dp, R.string.title_logcat, "logcat"),
+            Triple(R.drawable.ic_check_update_24dp, R.string.update_check_for_update, "check_update"),
+            Triple(R.drawable.ic_restore_24dp, R.string.title_configuration_backup_restore, "backup_restore"),
+            Triple(R.drawable.ic_about_24dp, R.string.title_about, "about"),
+        ).forEach { (iconRes, labelRes, route) ->
+            SettingsMenuItem(
+                icon = painterResource(iconRes),
+                title = stringResource(labelRes),
+                onClick = { onNavigate(route) }
+            )
+        }
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 

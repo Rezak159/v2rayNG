@@ -480,4 +480,16 @@
         <item>WebDAV</item>
     </string-array>
 
+    <!-- a4vpn redesigned UI -->
+    <string name="nav_home">Главная</string>
+    <string name="nav_servers">Серверы</string>
+    <string name="nav_more">Ещё</string>
+    <string name="state_connected">Подключено</string>
+    <string name="state_disconnected">Отключено</string>
+    <string name="home_current_server">Текущий сервер</string>
+    <string name="home_no_server_title">Ключа пока нет</string>
+    <string name="home_no_server_summary">Вставьте ключ из буфера обмена или отсканируйте QR-код</string>
+    <string name="home_paste_key">Вставить ключ</string>
+    <string name="home_scan_qr">Сканировать QR</string>
+
 </resources>

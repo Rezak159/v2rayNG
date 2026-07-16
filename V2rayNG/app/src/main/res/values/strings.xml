@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">v2rayNG</string>
+    <string name="app_name" translatable="false">a4vpn</string>
     <string name="app_widget_name">Switch</string>
     <string name="app_tile_name">Switch</string>
     <string name="app_tile_first_use">First use of this feature, please use the app to add server</string>
@@ -482,5 +482,17 @@
         <item>Local</item>
         <item>WebDAV</item>
     </string-array>
+
+    <!-- a4vpn redesigned UI -->
+    <string name="nav_home">Home</string>
+    <string name="nav_servers">Servers</string>
+    <string name="nav_more">More</string>
+    <string name="state_connected">Connected</string>
+    <string name="state_disconnected">Disconnected</string>
+    <string name="home_current_server">Current server</string>
+    <string name="home_no_server_title">No access key yet</string>
+    <string name="home_no_server_summary">Paste a key from the clipboard or scan a QR code</string>
+    <string name="home_paste_key">Paste key</string>
+    <string name="home_scan_qr">Scan QR</string>
 
 </resources>
