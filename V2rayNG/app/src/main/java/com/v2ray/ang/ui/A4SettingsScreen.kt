@@ -4,9 +4,11 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +35,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -42,44 +46,77 @@ import androidx.compose.ui.unit.sp
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.handler.MmkvManager.rememberMmkvBool
+import com.v2ray.ang.handler.MmkvManager.rememberMmkvString
+import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
 
-private const val SUPPORT_URL = "https://t.me/a4vpn_support"
+private const val BOT_URL = "https://t.me/a4securebot"
+private val TelegramBlue = Color(0xFF229ED9)
 
+/** Логотип Telegram (бумажный самолётик), путь из SVG в координатах 24×24. */
+private val telegramPath = PathParser()
+    .parsePathString(
+        "M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12" +
+            "c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81" +
+            "c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z",
+    )
+    .toPath()
+
+@Composable
+private fun TelegramIcon(modifier: Modifier, tint: Color) {
+    Canvas(modifier) {
+        val s = size.minDimension / 24f
+        scale(s, s, pivot = Offset.Zero) {
+            drawPath(telegramPath, tint)
+        }
+    }
+}
+
+/** Полноэкранный вариант (Activity): своя тема, отступ статус-бара и кнопка «назад». */
 @Composable
 fun A4SettingsScreen(
     onBackClick: () -> Unit,
     onOpenLogcat: () -> Unit,
 ) {
     A4Theme {
-        A4SettingsContent(onBackClick, onOpenLogcat)
+        A4SettingsContent(embedded = false, onBackClick = onBackClick, onOpenLogcat = onOpenLogcat)
     }
+}
+
+/** Встраиваемый вариант (вкладка нижней навигации): без темы, отступа и кнопки «назад». */
+@Composable
+fun A4SettingsTab(onOpenLogcat: () -> Unit) {
+    A4SettingsContent(embedded = true, onBackClick = {}, onOpenLogcat = onOpenLogcat)
 }
 
 @Composable
 private fun A4SettingsContent(
+    embedded: Boolean,
     onBackClick: () -> Unit,
     onOpenLogcat: () -> Unit,
 ) {
-    BackHandler(onBack = onBackClick)
+    if (!embedded) BackHandler(onBack = onBackClick)
 
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     var autoStart by rememberMmkvBool(AppConfig.PREF_IS_BOOTED, false)
     var showSpeed by rememberMmkvBool(AppConfig.PREF_SPEED_ENABLED, false)
+    var logLevel by rememberMmkvString(AppConfig.PREF_LOGLEVEL, "warning")
 
     Box(Modifier.fillMaxSize().background(A4Paper)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
+                .then(if (embedded) Modifier else Modifier.statusBarsPadding())
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
         ) {
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                BackArrow(onClick = onBackClick)
-                Spacer(Modifier.width(10.dp))
+                if (!embedded) {
+                    BackArrow(onClick = onBackClick)
+                    Spacer(Modifier.width(10.dp))
+                }
                 Text("Настройки", style = MaterialTheme.typography.headlineMedium, color = A4Ink)
             }
 
@@ -116,6 +153,18 @@ private fun A4SettingsContent(
             A4SectionLabel("ПРИЛОЖЕНИЕ")
             Spacer(Modifier.height(10.dp))
             SettingsCard {
+                SettingsChoiceRow(
+                    title = "Уровень журнала",
+                    description = "что записывать в журнал",
+                    options = logLevelOptions,
+                    selectedValue = logLevel,
+                    onSelected = {
+                        haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                        logLevel = it
+                        LogUtil.refreshLogLevel()
+                    },
+                )
+                HorizontalDivider(color = A4Border)
                 SettingsLinkRow(
                     title = "Журнал",
                     description = "ошибки и события подключения",
@@ -126,40 +175,23 @@ private fun A4SettingsContent(
             }
 
             Spacer(Modifier.height(20.dp))
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(A4Ink)
-                    .padding(18.dp),
+                    .springClick(scale = 0.98f) { Utils.openUri(context, BOT_URL) }
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(TelegramBlue)
+                    .padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column {
-                    Text(
-                        "Остались вопросы?",
-                        style = MaterialTheme.typography.headlineMedium.copy(fontSize = 20.sp),
-                        color = Color.White,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Поддержка отвечает в среднем за 10 минут. Если VPN не подключается — открой журнал и пришли его нам.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = A4OnDarkMuted,
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    Box(
-                        Modifier
-                            .springClick(scale = 0.97f) { Utils.openUri(context, SUPPORT_URL) }
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(A4Paper)
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                    ) {
-                        Text(
-                            "Написать в поддержку",
-                            style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
-                            color = A4Ink,
-                        )
-                    }
-                }
+                TelegramIcon(Modifier.size(22.dp), tint = Color.White)
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Перейти в бота",
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold),
+                    color = Color.White,
+                )
             }
             Spacer(Modifier.height(24.dp))
         }
@@ -229,6 +261,70 @@ private fun SettingsToggleRow(
                 uncheckedThumbColor = Color.White,
                 uncheckedBorderColor = A4Border,
             ),
+        )
+    }
+}
+
+private data class LogLevelOption(val value: String, val label: String)
+
+private val logLevelOptions = listOf(
+    LogLevelOption("debug", "debug"),
+    LogLevelOption("info", "info"),
+    LogLevelOption("warning", "warning"),
+    LogLevelOption("error", "error"),
+    LogLevelOption("none", "none"),
+)
+
+/** Ряд с выбором из нескольких значений — чипы, переносятся по ширине. */
+@Composable
+private fun SettingsChoiceRow(
+    title: String,
+    description: String,
+    options: List<LogLevelOption>,
+    selectedValue: String,
+    onSelected: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = A4Ink,
+        )
+        Text(description, style = MaterialTheme.typography.bodySmall, color = A4TextMuted)
+        Spacer(Modifier.height(10.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            options.forEach { option ->
+                LogLevelChip(
+                    label = option.label,
+                    selected = option.value == selectedValue,
+                    onClick = { onSelected(option.value) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LogLevelChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .springClick(scale = 0.95f, onClick = onClick)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) A4Ink else A4Paper)
+            .border(1.dp, if (selected) A4Ink else A4Border, RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+            color = if (selected) Color.White else A4Ink,
         )
     }
 }

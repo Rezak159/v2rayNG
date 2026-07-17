@@ -58,6 +58,7 @@ data class MainUiState(
     val selectedGroupId: String = "",
     val selectedGuid: String? = null,
     val isRunning: Boolean = false,
+    val isConnectionActionInFlight: Boolean = false,
     val isLoading: Boolean = false,
     val isTesting: Boolean = false,
     val statusText: String = "",
@@ -83,6 +84,17 @@ class MainViewModel(
 
     private val connectedText: String
         get() = app.getString(R.string.connection_connected)
+
+    fun beginConnectionAction(): Boolean {
+        if (_uiState.value.isConnectionActionInFlight) return false
+
+        _uiState.update { it.copy(isConnectionActionInFlight = true) }
+        return true
+    }
+
+    fun cancelConnectionAction() {
+        _uiState.update { it.copy(isConnectionActionInFlight = false) }
+    }
 
     private val _uiState = MutableStateFlow(
         MainUiState(
@@ -1037,6 +1049,7 @@ class MainViewModel(
         _uiState.update { state ->
             state.copy(
                 isRunning = running,
+                isConnectionActionInFlight = false,
                 statusText =
                     if (
                         !clearTestingText &&

@@ -107,13 +107,12 @@ val colorFabInactiveDark = Color(0xFF646464) // Dark Gray 深灰色
 val dividerColorLight = Color(0xFFE0E0E0) // Light Gray 浅灰色
 val dividerColorDark = Color(0xFF424242) // Dark Gray 深灰色
 
-// Toast Colors 70%
-val toastNormalBgLight = Color(0xB3353A3E) // Dark Gray 深灰色
-val toastNormalBgDark = Color(0xB34A4F54) // Darker Gray 暗灰色
-val toastSuccessBg = Color(0xB3388E3C) // Green 绿色
-val toastErrorBg = Color(0xB3D50000) // Red 红色
-val toastInfoBg = Color(0xB33F51B5) // Indigo Blue 靛蓝色
-val toastIconCircleBg = Color(0x33FFFFFF) // Semi-transparent White 半透明白色
+// Toast Colors
+val toastNormalBgLight = Color(0xFF353A3E) // Dark Gray 深灰色
+val toastNormalBgDark = Color(0xFF4A4F54) // Darker Gray 暗灰色
+val toastSuccessBg = Color(0xFF388E3C) // Green 绿色
+val toastErrorBg = Color(0xFFD50000) // Red 红色
+val toastInfoBg = Color(0xFF3F51B5) // Indigo Blue 靛蓝色
 val toastTextColor = Color.White // White 白色
 
 object ThemeManager {
@@ -135,12 +134,9 @@ object ThemeManager {
 
 @Composable
 fun resolveDarkTheme(): Boolean {
-    val mode by ThemeManager.themeMode.collectAsState()
-    return when (mode) {
-        "1" -> false
-        "2" -> true
-        else -> isSystemInDarkTheme()
-    }
+    // Приложение целиком светлое, тёмная тема не поддерживается — статус-бар
+    // всегда должен рисовать тёмные иконки, поэтому жёстко возвращаем false.
+    return false
 }
 
 val LocalDarkTheme = compositionLocalOf { false }

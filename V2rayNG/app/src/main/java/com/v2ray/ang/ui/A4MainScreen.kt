@@ -58,13 +58,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -72,11 +77,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -103,31 +110,39 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.entities.ServersCache
+import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.viewmodel.MainViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.PI
 import kotlin.math.sin
 
-private enum class A4Tab(val title: String) {
-    Home("ГЛАВНАЯ"),
-    Servers("СЕРВЕРЫ"),
-    Plans("ТАРИФ"),
+private enum class A4Tab(val label: String) {
+    Home("Главная"),
+    Servers("Серверы"),
+    Settings("Настройки"),
 }
 
-/** A4 visual shell over the original v2rayNG view-model and VPN service. */
+/** A4 visual shell over the original view-model and VPN service. */
 @Composable
 fun A4MainScreen(
     mainViewModel: MainViewModel,
     onConnectionClick: () -> Unit,
     onImportSubscription: (String, (Boolean) -> Unit) -> Unit,
     onSelectServer: (String) -> Unit,
-    onOpenSettings: () -> Unit,
+    onOpenLogcat: () -> Unit,
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
-    val subscriptions = MmkvManager.decodeSubscriptions()
-    val hasUsableSubscription = subscriptions.any { subscription ->
-        MmkvManager.decodeServerList(subscription.guid).isNotEmpty()
+    // Читаем state.groups здесь, во внешнем scope, чтобы он пересобирался после
+    // импорта подписки. Иначе state читается только внутри дочерних лямбд, внешний
+    // scope не подписан на изменения — и экран не переключался бы до перезапуска.
+    val hasUsableSubscription = remember(state.groups) {
+        MmkvManager.decodeSubscriptions().any { subscription ->
+            MmkvManager.decodeServerList(subscription.guid).isNotEmpty()
+        }
     }
 
     A4Theme {
@@ -141,12 +156,11 @@ fun A4MainScreen(
                 mainViewModel = mainViewModel,
                 isRunning = state.isRunning,
                 isTesting = state.isTesting,
-                subscriptionName = subscriptions.first().subscription.remarks.ifBlank { "A4VPN" },
                 selectedGroupId = state.selectedGroupId,
                 selectedGuid = state.selectedGuid,
                 onConnectionClick = onConnectionClick,
                 onSelectServer = onSelectServer,
-                onOpenSettings = onOpenSettings,
+                onOpenLogcat = onOpenLogcat,
             )
         }
     }
@@ -157,12 +171,11 @@ private fun A4AppHome(
     mainViewModel: MainViewModel,
     isRunning: Boolean,
     isTesting: Boolean,
-    subscriptionName: String,
     selectedGroupId: String,
     selectedGuid: String?,
     onConnectionClick: () -> Unit,
     onSelectServer: (String) -> Unit,
-    onOpenSettings: () -> Unit,
+    onOpenLogcat: () -> Unit,
 ) {
     val servers by mainViewModel.serversForGroup(selectedGroupId).collectAsStateWithLifecycle()
     val speed by mainViewModel.proxySpeed.collectAsStateWithLifecycle()
@@ -215,7 +228,7 @@ private fun A4AppHome(
     Box(Modifier.fillMaxSize().background(A4Paper)) {
         A4Backdrop()
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            A4TopBar(conn, onOpenSettings)
+            A4TopBar(conn)
             Box(Modifier.weight(1f)) {
                 AnimatedContent(
                     targetState = tab,
@@ -239,7 +252,6 @@ private fun A4AppHome(
                             downBps = speed.first,
                             upBps = speed.second,
                             sessionSeconds = sessionSeconds,
-                            subscriptionName = subscriptionName,
                             server = selectedServer,
                             onConnectionClick = {
                                 if (!isRunning) connecting = true
@@ -248,13 +260,14 @@ private fun A4AppHome(
                             onOpenServers = { tab = A4Tab.Servers },
                         )
                         A4Tab.Servers -> ServersTab(
+                            mainViewModel = mainViewModel,
                             servers = servers,
                             selectedGuid = selectedGuid,
                             isTesting = isTesting,
                             onSelectServer = selectServer,
                             onTestPing = { mainViewModel.testAllRealPing() },
                         )
-                        A4Tab.Plans -> PlansTab()
+                        A4Tab.Settings -> A4SettingsTab(onOpenLogcat = onOpenLogcat)
                     }
                 }
             }
@@ -268,11 +281,11 @@ private fun A4AppHome(
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun A4TopBar(conn: A4ConnState, onOpenSettings: () -> Unit) {
+private fun A4TopBar(conn: A4ConnState) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 20.dp, end = 8.dp, top = 10.dp, bottom = 6.dp),
+            .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Image(
@@ -294,13 +307,6 @@ private fun A4TopBar(conn: A4ConnState, onOpenSettings: () -> Unit) {
         )
         Spacer(Modifier.weight(1f))
         ConnDot(conn)
-        IconButton(onClick = onOpenSettings) {
-            Icon(
-                painter = painterResource(R.drawable.ic_settings_24dp),
-                contentDescription = "Настройки",
-                tint = A4Ink,
-            )
-        }
     }
 }
 
@@ -340,66 +346,98 @@ private fun ConnDot(conn: A4ConnState) {
 @Composable
 private fun A4BottomNav(current: A4Tab, onSelect: (A4Tab) -> Unit) {
     val haptic = LocalHapticFeedback.current
-    Column(Modifier.fillMaxWidth().background(A4Paper)) {
-        HorizontalDivider(color = A4Border)
-        BoxWithConstraints(
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 12.dp),
+    ) {
+        // плавающая «таблетка»-контейнер
+        Box(
             Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .height(54.dp),
+                .shadow(12.dp, RoundedCornerShape(24.dp), clip = false)
+                .clip(RoundedCornerShape(24.dp))
+                .background(A4PaperCard)
+                .border(1.dp, A4Border, RoundedCornerShape(24.dp))
+                .padding(6.dp),
         ) {
-            val itemW = maxWidth / A4Tab.entries.size
-            val underlineW = 34.dp
-            val x by animateDpAsState(
-                targetValue = itemW * current.ordinal + (itemW - underlineW) / 2,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMediumLow,
-                ),
-                label = "underline",
-            )
-            Row(Modifier.fillMaxSize()) {
-                A4Tab.entries.forEach { t ->
-                    val active = t == current
-                    val color by animateColorAsState(
-                        targetValue = if (active) A4Ink else A4TextMuted,
-                        animationSpec = tween(200),
-                        label = "tabColor",
-                    )
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) {
-                                if (t != current) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                                    onSelect(t)
-                                }
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            t.title,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp, letterSpacing = 1.5.sp),
-                            color = color,
+            BoxWithConstraints(Modifier.fillMaxWidth().height(60.dp)) {
+                val itemW = maxWidth / A4Tab.entries.size
+                val x by animateDpAsState(
+                    targetValue = itemW * current.ordinal,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    label = "pill",
+                )
+                // красная капсула-подсветка под активной вкладкой
+                Box(
+                    Modifier
+                        .offset(x = x)
+                        .width(itemW)
+                        .fillMaxHeight()
+                        .padding(horizontal = 4.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(A4Red.copy(alpha = 0.12f)),
+                )
+                Row(Modifier.fillMaxSize()) {
+                    A4Tab.entries.forEach { t ->
+                        val active = t == current
+                        val color by animateColorAsState(
+                            targetValue = if (active) A4Red else A4TextMuted,
+                            animationSpec = tween(220),
+                            label = "tabColor",
                         )
+                        Column(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                ) {
+                                    if (t != current) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                                        onSelect(t)
+                                    }
+                                },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            TabIcon(tab = t, color = color)
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                t.label,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 11.sp,
+                                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                                ),
+                                color = color,
+                            )
+                        }
                     }
                 }
             }
-            // красное подчёркивание, переезжающее между вкладками
-            Box(
-                Modifier
-                    .align(Alignment.BottomStart)
-                    .offset(x = x, y = (-5).dp)
-                    .width(underlineW)
-                    .height(3.dp)
-                    .background(A4Red),
-            )
         }
     }
+}
+
+/** Иконки вкладок — гладкие округлые заливные Material-иконки; цвет задаётся снаружи. */
+@Composable
+private fun TabIcon(tab: A4Tab, color: Color) {
+    val icon = when (tab) {
+        A4Tab.Home -> Icons.Rounded.Home
+        A4Tab.Servers -> Icons.Rounded.Public
+        A4Tab.Settings -> Icons.Rounded.Settings
+    }
+    Icon(
+        imageVector = icon,
+        contentDescription = tab.label,
+        tint = color,
+        modifier = Modifier.size(24.dp),
+    )
 }
 
 /**
@@ -478,7 +516,6 @@ private fun HomeTab(
     downBps: Long,
     upBps: Long,
     sessionSeconds: Long,
-    subscriptionName: String,
     server: ServersCache?,
     onConnectionClick: () -> Unit,
     onOpenServers: () -> Unit,
@@ -539,36 +576,9 @@ private fun HomeTab(
 
         ServerCard(
             serverName = serverName,
-            subscriptionName = subscriptionName,
             pingMs = server?.testDelayMillis ?: 0L,
             onClick = onOpenServers,
         )
-
-        Spacer(Modifier.height(12.dp))
-
-        A4BlackPlate(Modifier.fillMaxWidth()) {
-            AnimatedContent(
-                targetState = when (conn) {
-                    A4ConnState.Disconnected ->
-                        "Трафик идёт напрямую. Подключись, чтобы скрыть IP и зашифровать данные."
-                    A4ConnState.Connecting ->
-                        "Рукопожатие с сервером $serverName…"
-                    A4ConnState.Connected ->
-                        "Трафик зашифрован. Сервер: $serverName"
-                },
-                transitionSpec = {
-                    (fadeIn(tween(350)) + slideInVertically { it / 4 }) togetherWith
-                        fadeOut(tween(120)) using SizeTransform(clip = false)
-                },
-                label = "plate",
-            ) { msg ->
-                Text(
-                    text = msg,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = Color.White,
-                )
-            }
-        }
 
         Spacer(Modifier.height(24.dp))
     }
@@ -702,7 +712,6 @@ private fun StatTile(label: String, value: String, unit: String, modifier: Modif
 @Composable
 private fun ServerCard(
     serverName: String,
-    subscriptionName: String,
     pingMs: Long,
     onClick: () -> Unit,
 ) {
@@ -720,7 +729,6 @@ private fun ServerCard(
             A4SectionLabel("СЕРВЕР")
             Spacer(Modifier.height(4.dp))
             Text(serverName, style = MaterialTheme.typography.titleMedium, color = A4Ink)
-            Text(subscriptionName, style = MaterialTheme.typography.bodySmall, color = A4TextMuted)
         }
         if (pingMs > 0) {
             Column(horizontalAlignment = Alignment.End) {
@@ -754,8 +762,10 @@ private fun ChevronRight(color: Color = A4TextMuted) {
 // Серверы
 // ---------------------------------------------------------------------------
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ServersTab(
+    mainViewModel: MainViewModel,
     servers: List<ServersCache>,
     selectedGuid: String?,
     isTesting: Boolean,
@@ -763,41 +773,64 @@ private fun ServersTab(
     onTestPing: () -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
+    val scope = rememberCoroutineScope()
+    var isRefreshing by remember { mutableStateOf(false) }
+
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = {
+            if (!isRefreshing) {
+                scope.launch {
+                    isRefreshing = true
+                    try {
+                        withContext(Dispatchers.IO) {
+                            AngConfigManager.updateConfigViaSubAll()
+                        }
+                        mainViewModel.setupGroupTab(forceRefresh = true).join()
+                    } finally {
+                        isRefreshing = false
+                    }
+                }
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
     ) {
-        item {
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.Bottom) {
-                Column(Modifier.weight(1f)) {
-                    A4SectionLabel("СЕРВЕРЫ")
-                    Spacer(Modifier.height(6.dp))
-                    Text("Выбери локацию", style = MaterialTheme.typography.headlineMedium, color = A4Ink)
-                }
-                PingTestButton(isTesting) {
-                    haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                    onTestPing()
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-        }
-        itemsIndexed(servers, key = { _, s -> s.guid }) { index, server ->
-            A4StaggerIn(index) {
-                A4ServerRow(
-                    server = server,
-                    selected = server.guid == selectedGuid,
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
-                        onSelectServer(server.guid)
-                    },
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-        }
-        if (servers.isEmpty()) {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
+        ) {
             item {
-                Text("Серверы загружаются…", style = MaterialTheme.typography.bodyMedium, color = A4TextMuted)
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Column(Modifier.weight(1f)) {
+                        A4SectionLabel("СЕРВЕРЫ")
+                        Spacer(Modifier.height(6.dp))
+                        Text("Выбери локацию", style = MaterialTheme.typography.headlineMedium, color = A4Ink)
+                    }
+                    PingTestButton(isTesting) {
+                        haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                        onTestPing()
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+            itemsIndexed(servers, key = { _, s -> s.guid }) { index, server ->
+                A4StaggerIn(index) {
+                    A4ServerRow(
+                        server = server,
+                        selected = server.guid == selectedGuid,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                            onSelectServer(server.guid)
+                        },
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+            if (servers.isEmpty()) {
+                item {
+                    Text("Серверы загружаются…", style = MaterialTheme.typography.bodyMedium, color = A4TextMuted)
+                }
             }
         }
     }
@@ -854,62 +887,72 @@ private fun A4ServerRow(server: ServersCache, selected: Boolean, onClick: () -> 
         label = "borderW",
     )
     val profile = server.profile
-    val subtitle = profile.description?.takeIf { it.isNotBlank() }
-        ?: profile.server?.takeIf { it.isNotBlank() }
-        ?: profile.configType.name
 
-    Row(
+    Box(
         Modifier
             .fillMaxWidth()
             .springClick(scale = 0.98f, onClick = onClick)
             .clip(RoundedCornerShape(12.dp))
             .background(A4PaperCard)
             .border(borderWidth, borderColor, RoundedCornerShape(12.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 16.dp, vertical = 22.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Column(Modifier.weight(1f)) {
+        Text(
+            profile.remarks.ifBlank { "Сервер" },
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(end = 96.dp),
+            style = MaterialTheme.typography.titleMedium,
+            color = A4Ink,
+        )
+        Row(
+            modifier = Modifier.align(Alignment.CenterEnd),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            ServerRowPing(server.testDelayMillis)
+            AnimatedVisibility(
+                visible = selected,
+                enter = scaleIn(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+                ) + fadeIn(),
+            ) {
+                Box(
+                    Modifier
+                        .size(22.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(A4Ink),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CheckMark()
+                }
+            }
+        }
+    }
+}
+
+/** Пинг в ряду сервера: «X мс» + столбики, либо «ошибка» для таймаута. */
+@Composable
+private fun ServerRowPing(pingMs: Long) {
+    when {
+        pingMs > 0 -> Column(horizontalAlignment = Alignment.End) {
             Text(
-                profile.remarks.ifBlank { "Сервер" },
-                style = MaterialTheme.typography.titleMedium,
+                "$pingMs мс",
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
                 color = A4Ink,
             )
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = A4TextMuted)
+            Spacer(Modifier.height(4.dp))
+            A4PingBars(pingMs)
         }
-        if (server.testDelayMillis > 0) {
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    "${server.testDelayMillis} мс",
-                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = A4Ink,
-                )
-                Spacer(Modifier.height(4.dp))
-                A4PingBars(server.testDelayMillis)
-            }
-            Spacer(Modifier.width(12.dp))
-        } else if (server.testDelayMillis < 0) {
-            Text("нет ответа", style = MaterialTheme.typography.bodySmall, color = A4TextMuted)
-            Spacer(Modifier.width(12.dp))
-        }
-        AnimatedVisibility(
-            visible = selected,
-            enter = scaleIn(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMedium,
-                ),
-            ) + fadeIn(),
-        ) {
-            Box(
-                Modifier
-                    .size(22.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(A4Ink),
-                contentAlignment = Alignment.Center,
-            ) {
-                CheckMark()
-            }
-        }
+        pingMs < 0 -> Text(
+            "ошибка",
+            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+            color = A4Red,
+        )
     }
 }
 
@@ -922,390 +965,6 @@ private fun CheckMark() {
         val stroke = 2.dp.toPx()
         drawLine(Color.White, Offset(w * 0.12f, h * 0.55f), Offset(w * 0.4f, h * 0.82f), stroke, StrokeCap.Round)
         drawLine(Color.White, Offset(w * 0.4f, h * 0.82f), Offset(w * 0.88f, h * 0.2f), stroke, StrokeCap.Round)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Тариф (витрина: оплата живёт в Telegram-боте)
-// ---------------------------------------------------------------------------
-
-private data class PlanTier(
-    val id: String,
-    val emoji: String,
-    val name: String,
-    val trafficGb: Int,
-    val devices: Int,
-    val whitelist: Boolean,
-    val prices: Map<Int, Int>,
-)
-
-private val plans = listOf(
-    PlanTier("basic", "🌱", "Mini", 150, 2, false, mapOf(1 to 159)),
-    PlanTier("standard", "☘️", "Pro", 400, 3, true, mapOf(1 to 199, 3 to 549, 6 to 999)),
-    PlanTier("family", "🌴", "Max", 1000, 4, true, mapOf(1 to 299, 3 to 799, 6 to 1499)),
-)
-
-@Composable
-private fun PlansTab() {
-    val haptic = LocalHapticFeedback.current
-    var tierId by remember { mutableStateOf("standard") }
-    var months by remember { mutableIntStateOf(1) }
-    var showNote by remember { mutableStateOf(false) }
-
-    LaunchedEffect(showNote) {
-        if (showNote) {
-            delay(2400)
-            showNote = false
-        }
-    }
-
-    Box(Modifier.fillMaxSize()) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp),
-        ) {
-            Spacer(Modifier.height(8.dp))
-            A4SectionLabel("ТАРИФ")
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Больше трафика,\nбольше устройств",
-                style = MaterialTheme.typography.headlineMedium,
-                color = A4Ink,
-            )
-            Spacer(Modifier.height(16.dp))
-
-            PeriodSelector(selected = months) { m ->
-                haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                months = m
-                if (plans.first { it.id == tierId }.prices[m] == null) tierId = "standard"
-            }
-            Spacer(Modifier.height(14.dp))
-
-            plans.forEach { tier ->
-                TierCard(
-                    tier = tier,
-                    months = months,
-                    selected = tierId == tier.id,
-                    enabled = tier.prices[months] != null,
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
-                        tierId = tier.id
-                    },
-                )
-                Spacer(Modifier.height(10.dp))
-            }
-
-            Spacer(Modifier.height(10.dp))
-            FeatureStep("01", "БЕЗ ЛИМИТА СКОРОСТИ", "видео в 4К и звонки — скорость не режем")
-            Spacer(Modifier.height(12.dp))
-            FeatureStep("02", "ВСЕ УСТРОЙСТВА", "телефон, ноут, планшет и ТВ одновременно")
-            Spacer(Modifier.height(12.dp))
-            FeatureStep("03", "ПОДДЕРЖКА 24/7", "живой человек, отвечаем в среднем за 10 минут")
-
-            Spacer(Modifier.height(20.dp))
-            CtaButton(tierId = tierId, months = months, onClick = { showNote = true })
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "цены — из каталога a4vpn",
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                color = A4TextMuted,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(24.dp))
-        }
-
-        AnimatedVisibility(
-            visible = showNote,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(20.dp),
-            enter = slideInVertically(
-                initialOffsetY = { it },
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMediumLow,
-                ),
-            ) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = tween(250)) + fadeOut(),
-        ) {
-            A4BlackPlate {
-                Text(
-                    "Оплата и продление — в Telegram-боте a4vpn",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = Color.White,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PeriodSelector(selected: Int, onSelect: (Int) -> Unit) {
-    val options = listOf(1, 3, 6)
-    BoxWithConstraints(
-        Modifier
-            .fillMaxWidth()
-            .height(46.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(A4PaperCard)
-            .border(1.dp, A4Border, RoundedCornerShape(10.dp))
-            .padding(4.dp),
-    ) {
-        val segW = maxWidth / 3
-        val index = options.indexOf(selected)
-        val offset by animateDpAsState(
-            targetValue = segW * index,
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessMediumLow,
-            ),
-            label = "segment",
-        )
-        Box(
-            Modifier
-                .offset(x = offset)
-                .width(segW)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(7.dp))
-                .background(A4Red),
-        )
-        Row(Modifier.fillMaxSize()) {
-            options.forEach { m ->
-                val active = m == selected
-                val color by animateColorAsState(
-                    targetValue = if (active) Color.White else A4Ink,
-                    animationSpec = tween(250),
-                    label = "segText",
-                )
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                        ) { onSelect(m) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = if (m == 1) "1 месяц" else "$m месяцев",
-                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
-                        color = color,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TierCard(
-    tier: PlanTier,
-    months: Int,
-    selected: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
-    val active = selected && enabled
-    val borderColor by animateColorAsState(
-        targetValue = if (active) A4Red else A4Border,
-        animationSpec = tween(250),
-        label = "tierBorder",
-    )
-    val borderWidth by animateDpAsState(
-        targetValue = if (active) 2.dp else 1.dp,
-        animationSpec = tween(250),
-        label = "tierBorderW",
-    )
-    val alpha by animateFloatAsState(
-        targetValue = if (enabled) 1f else 0.45f,
-        animationSpec = tween(300),
-        label = "tierAlpha",
-    )
-    val scale by animateFloatAsState(
-        targetValue = if (active) 1f else 0.98f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
-        label = "tierScale",
-    )
-
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                this.alpha = alpha
-                scaleX = scale
-                scaleY = scale
-            },
-    ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(top = 6.dp)
-                .springClick(scale = 0.98f) { if (enabled) onClick() }
-                .clip(RoundedCornerShape(12.dp))
-                .background(A4PaperCard)
-                .border(borderWidth, borderColor, RoundedCornerShape(12.dp))
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(tier.emoji, fontSize = 24.sp)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    tier.name,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                    ),
-                    color = A4Ink,
-                )
-                Text(
-                    "${tier.trafficGb} ГБ · до ${tier.devices} устройств",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = A4TextMuted,
-                )
-                if (tier.whitelist) {
-                    Text(
-                        "+ белые списки для РФ",
-                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                        color = A4Red,
-                    )
-                }
-            }
-            if (enabled) {
-                val price = tier.prices[months]!!
-                Column(horizontalAlignment = Alignment.End) {
-                    AnimatedContent(
-                        targetState = price,
-                        transitionSpec = {
-                            (slideInVertically { -it / 2 } + fadeIn(tween(250))) togetherWith
-                                (slideOutVertically { it / 2 } + fadeOut(tween(150))) using
-                                SizeTransform(clip = false)
-                        },
-                        label = "price",
-                    ) { p ->
-                        Text(
-                            "$p ₽",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                            ),
-                            color = A4Ink,
-                        )
-                    }
-                    if (months > 1) {
-                        val saving = tier.prices[1]!! * months - price
-                        Text(
-                            "выгода $saving ₽",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                            ),
-                            color = A4Red,
-                        )
-                    } else {
-                        Text(
-                            "в месяц",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                            color = A4TextMuted,
-                        )
-                    }
-                }
-            } else {
-                Text(
-                    "только 1 месяц",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = A4TextMuted,
-                )
-            }
-        }
-
-        if (tier.id == "standard") {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(end = 14.dp)
-                    .graphicsLayer { rotationZ = -3f }
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(A4Ink)
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
-            ) {
-                Text(
-                    "ПОПУЛЯРНЫЙ",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, letterSpacing = 1.5.sp),
-                    color = Color.White,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun FeatureStep(number: String, title: String, description: String) {
-    Row(verticalAlignment = Alignment.Top) {
-        A4StepBadge(number)
-        Spacer(Modifier.width(12.dp))
-        Column {
-            Text(
-                title,
-                fontFamily = A4Geologica,
-                style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 0.5.sp),
-                color = A4Ink,
-            )
-            Text(description, style = MaterialTheme.typography.bodySmall, color = A4TextMuted)
-        }
-    }
-}
-
-@Composable
-private fun CtaButton(tierId: String, months: Int, onClick: () -> Unit) {
-    val tier = plans.first { it.id == tierId }
-    val price = tier.prices[months] ?: tier.prices[1]!!
-
-    val arrowNudge by rememberInfiniteTransition(label = "cta").animateFloat(
-        initialValue = 0f,
-        targetValue = 5f,
-        animationSpec = infiniteRepeatable(tween(700, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "arrow",
-    )
-
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .springClick(scale = 0.97f, onClick = onClick)
-            .clip(RoundedCornerShape(10.dp))
-            .background(A4Red)
-            .padding(vertical = 17.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AnimatedContent(
-                targetState = "Оформить ${tier.name} за $price ₽",
-                transitionSpec = {
-                    fadeIn(tween(250)) togetherWith fadeOut(tween(120)) using SizeTransform(clip = false)
-                },
-                label = "ctaText",
-            ) { label ->
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp),
-                    color = Color.White,
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "→",
-                style = MaterialTheme.typography.labelLarge.copy(fontSize = 18.sp),
-                color = Color.White,
-                modifier = Modifier.offset(x = arrowNudge.dp),
-            )
-        }
     }
 }
 
@@ -1473,16 +1132,6 @@ private fun SubscriptionEntry(
                     SubmitButton(
                         busy = isSubmitting || isLoading,
                         onClick = { submit(url) },
-                    )
-                }
-            }
-            Spacer(Modifier.height(24.dp))
-            A4StaggerIn(4) {
-                A4BlackPlate(Modifier.fillMaxWidth()) {
-                    Text(
-                        "Один ключ — все устройства из тарифа. Ничего настраивать не нужно.",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color.White,
                     )
                 }
             }

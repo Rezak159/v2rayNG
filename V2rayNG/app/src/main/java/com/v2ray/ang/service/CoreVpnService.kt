@@ -114,6 +114,10 @@ class CoreVpnService : VpnService(), ServiceControl {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         LogUtil.i(AppConfig.TAG, "StartCore-VPN: Service command received")
+        if (CoreServiceManager.isRunning()) {
+            LogUtil.i(AppConfig.TAG, "StartCore-VPN: Core already running, ignoring duplicate start")
+            return START_STICKY
+        }
         NotificationManager.showNotification(null)
         setupVpnService()
         startService()
@@ -398,4 +402,3 @@ class CoreVpnService : VpnService(), ServiceControl {
         }
     }
 }
-
