@@ -211,6 +211,7 @@ object CoreServiceManager {
      * `registerReceiver(Context, BroadcastReceiver, IntentFilter, int)`.
      * Starts the V2Ray core service.
      */
+    @Synchronized
     fun startCoreLoop(vpnInterface: ParcelFileDescriptor?): Boolean {
         if (coreController.isRunning) {
             LogUtil.w(AppConfig.TAG, "StartCore-Manager: Core already running")
@@ -295,16 +296,15 @@ object CoreServiceManager {
      * Unregisters broadcast receivers, stops notifications, and shuts down plugins.
      * @return True if the core was stopped successfully, false otherwise.
      */
+    @Synchronized
     fun stopCoreLoop(): Boolean {
         val service = getService() ?: return false
 
         if (coreController.isRunning) {
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    coreController.stopLoop()
-                } catch (e: Exception) {
-                    LogUtil.e(AppConfig.TAG, "StartCore-Manager: Failed to stop V2Ray loop", e)
-                }
+            try {
+                coreController.stopLoop()
+            } catch (e: Exception) {
+                LogUtil.e(AppConfig.TAG, "StartCore-Manager: Failed to stop V2Ray loop", e)
             }
         }
 

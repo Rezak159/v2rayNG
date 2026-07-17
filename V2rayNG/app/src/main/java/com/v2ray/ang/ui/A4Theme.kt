@@ -156,46 +156,6 @@ internal fun A4SectionLabel(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** Чёрная плашка с тонкой красной полосой слева — «важная мысль». */
-@Composable
-internal fun A4BlackPlate(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(A4Ink)
-            .height(IntrinsicSize.Min),
-    ) {
-        Box(
-            Modifier
-                .width(4.dp)
-                .fillMaxHeight()
-                .background(A4Red),
-        )
-        Box(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-            content()
-        }
-    }
-}
-
-/** Чёрный квадрат с номером шага — «01», «02», «03». */
-@Composable
-internal fun A4StepBadge(number: String, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .size(26.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(A4Ink),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = number,
-            color = Color.White,
-            fontFamily = A4Geologica,
-            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.5.sp),
-        )
-    }
-}
-
 /** Индикатор пинга: четыре столбика, заполненность зависит от качества. */
 @Composable
 internal fun A4PingBars(pingMs: Long, modifier: Modifier = Modifier) {

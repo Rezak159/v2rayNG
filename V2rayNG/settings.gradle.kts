@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "v2rayNG"
+rootProject.name = "a4vpn"
 include(":app")

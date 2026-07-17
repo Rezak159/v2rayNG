@@ -8,7 +8,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.net.TrafficStats
 import android.os.Build
+import android.os.Process
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import com.v2ray.ang.AppConfig
@@ -36,6 +38,8 @@ object NotificationManager {
     private const val QUERY_INTERVAL_MS = 3000L
 
     private var lastQueryTime = 0L
+    private var lastUidRxBytes: Long? = null
+    private var lastUidTxBytes: Long? = null
     private var mBuilder: NotificationCompat.Builder? = null
     private var speedNotificationJob: Job? = null
     private var mNotificationManager: NotificationManager? = null
@@ -48,6 +52,7 @@ object NotificationManager {
         // Цикл крутится всегда: он же шлёт скорость в UI (A4).
         // Текст уведомления обновляется только при включённом PREF_SPEED_ENABLED.
         if (speedNotificationJob != null || CoreServiceManager.isRunning() == false) return
+        resetUidTrafficBaseline()
 
         var lastZeroSpeed = false
 
@@ -128,6 +133,8 @@ object NotificationManager {
         speedNotificationJob?.cancel()
         speedNotificationJob = null
         mNotificationManager = null
+        lastUidRxBytes = null
+        lastUidTxBytes = null
     }
 
     /**
@@ -255,10 +262,20 @@ object NotificationManager {
         val directTotal = directUplink + directDownlink
         val zeroSpeed = proxyTotal + directTotal == 0L
 
-        // A4: скорость прокси в UI, байт/сек, "downlink,uplink"
+        // A4: скорость в UI, байт/сек, "downlink,uplink".
+        // Некоторые сборки Xray не отдают outbound-счётчики, хотя stats включён.
+        // Тогда используем счётчики трафика самого VPN-процесса.
         getService()?.let { service ->
-            val downBps = (proxyDownlink / sinceLastQueryInSeconds).toLong()
-            val upBps = (proxyUplink / sinceLastQueryInSeconds).toLong()
+            var downBytes = proxyDownlink + directDownlink
+            var upBytes = proxyUplink + directUplink
+            if (downBytes == 0L && upBytes == 0L) {
+                uidTrafficDelta()?.let { (down, up) ->
+                    downBytes = down
+                    upBytes = up
+                }
+            }
+            val downBps = (downBytes / sinceLastQueryInSeconds).toLong()
+            val upBps = (upBytes / sinceLastQueryInSeconds).toLong()
             MessageUtil.sendMsg2UI(service, AppConfig.MSG_SPEED_UPDATE, "$downBps,$upBps")
         }
 
@@ -279,6 +296,28 @@ object NotificationManager {
         }
         lastQueryTime = queryTime
         return zeroSpeed
+    }
+
+    private fun resetUidTrafficBaseline() {
+        val received = TrafficStats.getUidRxBytes(Process.myUid())
+        val sent = TrafficStats.getUidTxBytes(Process.myUid())
+        lastUidRxBytes = received.takeIf { it != TrafficStats.UNSUPPORTED.toLong() }
+        lastUidTxBytes = sent.takeIf { it != TrafficStats.UNSUPPORTED.toLong() }
+    }
+
+    private fun uidTrafficDelta(): Pair<Long, Long>? {
+        val received = TrafficStats.getUidRxBytes(Process.myUid())
+        val sent = TrafficStats.getUidTxBytes(Process.myUid())
+        if (received == TrafficStats.UNSUPPORTED.toLong() || sent == TrafficStats.UNSUPPORTED.toLong()) return null
+
+        val previousReceived = lastUidRxBytes
+        val previousSent = lastUidTxBytes
+        lastUidRxBytes = received
+        lastUidTxBytes = sent
+        if (previousReceived == null || previousSent == null) return null
+
+        return (received - previousReceived).coerceAtLeast(0L) to
+            (sent - previousSent).coerceAtLeast(0L)
     }
 
     /**
