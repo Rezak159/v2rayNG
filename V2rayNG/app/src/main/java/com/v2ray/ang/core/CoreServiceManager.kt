@@ -284,6 +284,7 @@ object CoreServiceManager {
             browserDialer!!.start(service, dialerAddr)
         }
 
+        MmkvManager.encodeSettings(AppConfig.A4_CONNECT_TS, System.currentTimeMillis())
         MessageUtil.sendMsg2UI(service, AppConfig.MSG_STATE_START_SUCCESS, "")
         NotificationManager.startSpeedNotification()
         LogUtil.i(AppConfig.TAG, "StartCore-Manager: Core started successfully")

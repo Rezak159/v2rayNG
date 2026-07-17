@@ -222,33 +222,12 @@ class MainActivity : HelperBaseComponentActivity() {
 
     @Composable
     override fun ScreenContent() {
-        MainScreen(
+        A4MainScreen(
             mainViewModel = mainViewModel,
-            onFabClick = ::handleFabAction,
-            onTestClick = ::handleLayoutTestClick,
-            onNavigate = ::navigateTo,
-            onImportManually = ::importManually,
-            onImportQRcode = ::importQRcode,
-            onImportClipboard = ::importClipboard,
-            onImportLocal = ::importConfigLocal,
-            onSubUpdate = ::importConfigViaSub,
-            onExportAll = ::exportAll,
-            onRealPingAll = mainViewModel::testAllRealPing,
-            onRestartService = ::restartV2Ray,
-            onDelAllConfig = ::delAllConfig,
-            onDelDuplicateConfig = ::delDuplicateConfig,
-            onDelInvalidConfig = ::delInvalidConfig,
-            onSortByTestResults = ::sortByTestResults,
-            onEditServer = ::editServer,
-            onRemoveServer = ::removeServer,
+            onConnectionClick = ::handleFabAction,
+            onImportSubscription = ::importSubscription,
             onSelectServer = ::setSelectServer,
-            onShareQRCode = ::getShareQRCodeBitmap,
-            onShareClipboard = ::shareToClipboard,
-            onShareFullContent = ::shareFullContentAsync,
-            onSubscriptionIdChanged = mainViewModel::subscriptionIdChanged,
-            onLocateSelectedServer = mainViewModel::triggerLocateSelectedServer,
-            shareMethodEntries = resources.getStringArray(R.array.share_method).toList(),
-            shareMethodMoreEntries = resources.getStringArray(R.array.share_method_more).toList()
+            onOpenSettings = { navigateTo("settings") },
         )
     }
 
@@ -305,7 +284,8 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private fun startV2Ray() {
-        if (MmkvManager.getSelectServer().isNullOrEmpty()) {
+        val selectedGuid = MmkvManager.getSelectServer()
+        if (selectedGuid.isNullOrEmpty() || MmkvManager.decodeServerConfig(selectedGuid) == null) {
             toast(R.string.title_file_chooser); return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN &&
@@ -348,7 +328,52 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
-    private fun importBatchConfig(server: String?) {
+    /** The simplified A4 entry point accepts one subscription URL only. */
+    private fun importSubscription(
+        url: String,
+        onResult: (Boolean) -> Unit,
+    ) {
+        val subscriptions = MmkvManager.decodeSubscriptions()
+        val hasUsableSubscription = subscriptions.any { subscription ->
+            MmkvManager.decodeServerList(subscription.guid).isNotEmpty()
+        }
+        if (hasUsableSubscription) {
+            onResult(true)
+            return
+        }
+
+        // A previous key may have been saved but never yielded a server.
+        // It must not lock the user out of entering a working replacement key.
+        subscriptions.forEach { subscription ->
+            MmkvManager.removeServerViaSubid(subscription.guid)
+            MmkvManager.removeSubscription(subscription.guid)
+        }
+
+        val subscriptionUrl = url.trim()
+        if (!Utils.isValidSubUrl(subscriptionUrl)) {
+            toastError(R.string.toast_failure)
+            onResult(false)
+            return
+        }
+        importBatchConfig(subscriptionUrl) { imported ->
+            if (!imported) {
+                // A subscription URL may be stored even if its first update failed.
+                // Do not let that empty entry lock the user out of trying again.
+                MmkvManager.decodeSubscriptions()
+                    .filter { MmkvManager.decodeServerList(it.guid).isEmpty() }
+                    .forEach {
+                        MmkvManager.removeServerViaSubid(it.guid)
+                        MmkvManager.removeSubscription(it.guid)
+                    }
+            }
+            onResult(imported)
+        }
+    }
+
+    private fun importBatchConfig(
+        server: String?,
+        onFinished: ((Boolean) -> Unit)? = null,
+    ) {
         mainViewModel.setLoading(true)
         lifecycleScope.launch {
             try {
@@ -359,19 +384,27 @@ class MainActivity : HelperBaseComponentActivity() {
                         true
                     )
                 }
+                val hasUsableSubscription = MmkvManager.decodeSubscriptions().any { subscription ->
+                    MmkvManager.decodeServerList(subscription.guid).isNotEmpty()
+                }
+                val imported = count > 0 || (countSub > 0 && hasUsableSubscription)
                 when {
                     count > 0 -> {
                         toast(getString(R.string.title_import_config_count, count))
-                        mainViewModel.setupGroupTab(forceRefresh = true)
+                        mainViewModel.setupGroupTab(forceRefresh = true).join()
                     }
-                    countSub > 0 -> mainViewModel.setupGroupTab(forceRefresh = true)
+                    countSub > 0 && hasUsableSubscription -> {
+                        mainViewModel.setupGroupTab(forceRefresh = true).join()
+                    }
                     else -> toastError(R.string.toast_failure)
                 }
+                onFinished?.invoke(imported)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
                 LogUtil.e(AppConfig.TAG, "Failed to import batch config", e)
                 toastError(R.string.toast_failure)
+                onFinished?.invoke(false)
             } finally {
                 mainViewModel.setLoading(false)
             }

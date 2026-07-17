@@ -639,6 +639,9 @@ object AngConfigManager {
      */
     private fun importUrlAsSubscription(url: String): Int {
         val subscriptions = MmkvManager.decodeSubscriptions()
+        if (subscriptions.isNotEmpty()) {
+            return 0
+        }
         subscriptions.forEach {
             if (it.subscription.url == url) {
                 return 0

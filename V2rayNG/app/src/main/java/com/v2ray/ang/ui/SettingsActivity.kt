@@ -1,6 +1,7 @@
 package com.v2ray.ang.ui
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -52,9 +53,9 @@ class SettingsActivity : BaseComponentActivity() {
 
     @Composable
     override fun ScreenContent() {
-        SettingsScreen(
+        A4SettingsScreen(
             onBackClick = { finish() },
-            onModeHelpClicked = { Utils.openUri(this, AppConfig.APP_WIKI_MODE) }
+            onOpenLogcat = { startActivity(Intent(this, LogcatActivity::class.java)) },
         )
     }
 }
@@ -63,7 +64,8 @@ class SettingsActivity : BaseComponentActivity() {
 @Composable
 fun SettingsScreen(
     onBackClick: () -> Unit,
-    onModeHelpClicked: () -> Unit
+    onModeHelpClicked: () -> Unit,
+    onOpenLogcat: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -180,6 +182,12 @@ fun SettingsScreen(
                 .verticalScrollbar(scrollState)
                 .verticalScroll(scrollState)
         ) {
+            PreferenceGroupHeader(title = stringResource(R.string.title_logcat))
+            SettingsMenuItem(
+                title = stringResource(R.string.title_logcat),
+                onClick = onOpenLogcat,
+            )
+
             PreferenceGroupHeader(title = stringResource(R.string.title_ui_settings))
             SettingsSwitchItem(
                 title = stringResource(R.string.title_pref_speed_enabled),

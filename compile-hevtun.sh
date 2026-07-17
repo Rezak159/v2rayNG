@@ -90,13 +90,15 @@ EXECMK
     "APP_CFLAGS=-O3" \
     "APP_LDFLAGS=-Wl,--build-id=none -Wl,--hash-style=gnu" \
 
-# Stage both artifacts under libs/<abi>/. The executable is renamed to
-# lib*.so so the APK installer extracts it into nativeLibraryDir as an
-# executable file (filename distinct from the JNI library above).
-mkdir -p "$__dir/libs"
-cp -r "$TMPDIR/libs/"* "$__dir/libs/"
+# Stage both artifacts in the Android module's jniLibs directory. The
+# executable is renamed to lib*.so so the APK installer extracts it into
+# nativeLibraryDir as an executable file (filename distinct from the JNI lib).
+APP_LIBS_DIR="$__dir/V2rayNG/app/libs"
+mkdir -p "$APP_LIBS_DIR"
 for abi in $ABIS; do
-  cp "$TMPDIR/libs-exec/$abi/hevsockstun" "$__dir/libs/$abi/libhevsockstun.so"
+  mkdir -p "$APP_LIBS_DIR/$abi"
+  cp "$TMPDIR/libs/$abi/libhev-socks5-tunnel.so" "$APP_LIBS_DIR/$abi/"
+  cp "$TMPDIR/libs-exec/$abi/hevsockstun" "$APP_LIBS_DIR/$abi/libhevsockstun.so"
 done
 
 popd

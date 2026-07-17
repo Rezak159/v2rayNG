@@ -1,0 +1,273 @@
+package com.v2ray.ang.ui
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.v2ray.ang.AppConfig
+import com.v2ray.ang.BuildConfig
+import com.v2ray.ang.handler.MmkvManager.rememberMmkvBool
+import com.v2ray.ang.util.Utils
+
+private const val SUPPORT_URL = "https://t.me/a4vpn_support"
+
+@Composable
+fun A4SettingsScreen(
+    onBackClick: () -> Unit,
+    onOpenLogcat: () -> Unit,
+) {
+    A4Theme {
+        A4SettingsContent(onBackClick, onOpenLogcat)
+    }
+}
+
+@Composable
+private fun A4SettingsContent(
+    onBackClick: () -> Unit,
+    onOpenLogcat: () -> Unit,
+) {
+    BackHandler(onBack = onBackClick)
+
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    var autoStart by rememberMmkvBool(AppConfig.PREF_IS_BOOTED, false)
+    var showSpeed by rememberMmkvBool(AppConfig.PREF_SPEED_ENABLED, false)
+
+    Box(Modifier.fillMaxSize().background(A4Paper)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
+        ) {
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                BackArrow(onClick = onBackClick)
+                Spacer(Modifier.width(10.dp))
+                Text("Настройки", style = MaterialTheme.typography.headlineMedium, color = A4Ink)
+            }
+
+            Spacer(Modifier.height(20.dp))
+            A4SectionLabel("ПОДКЛЮЧЕНИЕ")
+            Spacer(Modifier.height(10.dp))
+            SettingsCard {
+                SettingsToggleRow(
+                    title = "Автозапуск",
+                    description = "включать VPN после перезагрузки телефона",
+                    checked = autoStart,
+                    onCheckedChange = {
+                        haptic.performHapticFeedback(
+                            if (it) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff,
+                        )
+                        autoStart = it
+                    },
+                )
+                HorizontalDivider(color = A4Border)
+                SettingsToggleRow(
+                    title = "Скорость в уведомлении",
+                    description = "показывать текущую скорость туннеля",
+                    checked = showSpeed,
+                    onCheckedChange = {
+                        haptic.performHapticFeedback(
+                            if (it) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff,
+                        )
+                        showSpeed = it
+                    },
+                )
+            }
+
+            Spacer(Modifier.height(20.dp))
+            A4SectionLabel("ПРИЛОЖЕНИЕ")
+            Spacer(Modifier.height(10.dp))
+            SettingsCard {
+                SettingsLinkRow(
+                    title = "Журнал",
+                    description = "ошибки и события подключения",
+                    onClick = onOpenLogcat,
+                )
+                HorizontalDivider(color = A4Border)
+                SettingsInfoRow("Версия", BuildConfig.VERSION_NAME)
+            }
+
+            Spacer(Modifier.height(20.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(A4Ink)
+                    .padding(18.dp),
+            ) {
+                Column {
+                    Text(
+                        "Остались вопросы?",
+                        style = MaterialTheme.typography.headlineMedium.copy(fontSize = 20.sp),
+                        color = Color.White,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Поддержка отвечает в среднем за 10 минут. Если VPN не подключается — открой журнал и пришли его нам.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = A4OnDarkMuted,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Box(
+                        Modifier
+                            .springClick(scale = 0.97f) { Utils.openUri(context, SUPPORT_URL) }
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(A4Paper)
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                    ) {
+                        Text(
+                            "Написать в поддержку",
+                            style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
+                            color = A4Ink,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+/** Стрелка «назад», нарисованная руками. */
+@Composable
+private fun BackArrow(onClick: () -> Unit) {
+    Box(
+        Modifier
+            .springClick(scale = 0.9f, onClick = onClick)
+            .size(40.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(20.dp)) {
+            val w = size.width
+            val h = size.height
+            val stroke = 2.2f.dp.toPx()
+            drawLine(A4Ink, Offset(w * 0.05f, h * 0.5f), Offset(w * 0.95f, h * 0.5f), stroke, StrokeCap.Round)
+            drawLine(A4Ink, Offset(w * 0.05f, h * 0.5f), Offset(w * 0.4f, h * 0.18f), stroke, StrokeCap.Round)
+            drawLine(A4Ink, Offset(w * 0.05f, h * 0.5f), Offset(w * 0.4f, h * 0.82f), stroke, StrokeCap.Round)
+        }
+    }
+}
+
+@Composable
+private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(A4PaperCard)
+            .border(1.dp, A4Border, RoundedCornerShape(12.dp)),
+        content = content,
+    )
+}
+
+@Composable
+private fun SettingsToggleRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = A4Ink,
+            )
+            Text(description, style = MaterialTheme.typography.bodySmall, color = A4TextMuted)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedTrackColor = A4Red,
+                checkedThumbColor = Color.White,
+                uncheckedTrackColor = A4Border,
+                uncheckedThumbColor = Color.White,
+                uncheckedBorderColor = A4Border,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun SettingsLinkRow(title: String, description: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .springClick(scale = 0.98f, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = A4Ink,
+            )
+            Text(description, style = MaterialTheme.typography.bodySmall, color = A4TextMuted)
+        }
+        Text("→", style = MaterialTheme.typography.titleMedium, color = A4Ink)
+    }
+}
+
+@Composable
+private fun SettingsInfoRow(title: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = A4Ink,
+            modifier = Modifier.weight(1f),
+        )
+        Text(value, style = MaterialTheme.typography.bodySmall, color = A4TextMuted)
+    }
+}

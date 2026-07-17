@@ -10,7 +10,9 @@ import com.v2ray.ang.R
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.handler.AngConfigManager
+import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.util.LogUtil
+import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -30,9 +32,7 @@ class UrlSchemeActivity : BaseComponentActivity() {
                 } else if (action == Intent.ACTION_VIEW) {
                     when (data?.host) {
                         "install-config" -> {
-                            val uri: Uri? = intent.data
-                            val shareUrl = uri?.getQueryParameter("url").orEmpty()
-                            parseUri(shareUrl, uri?.fragment)
+                            toastError(R.string.toast_action_not_allowed)
                         }
 
                         "install-sub" -> {
@@ -60,13 +60,21 @@ class UrlSchemeActivity : BaseComponentActivity() {
     }
 
     private fun parseUri(uriString: String?, fragment: String?) {
+        if (MmkvManager.decodeSubscriptions().isNotEmpty()) {
+            toastError(R.string.toast_action_not_allowed)
+            return
+        }
         if (uriString.isNullOrEmpty()) {
             return
         }
         LogUtil.i(AppConfig.TAG, uriString)
 
-        var decodedUrl = URLDecoder.decode(uriString, "UTF-8")
-        val uri = Uri.parse(decodedUrl)
+            var decodedUrl = URLDecoder.decode(uriString, "UTF-8")
+            if (!Utils.isValidSubUrl(decodedUrl)) {
+                toastError(R.string.toast_failure)
+                return
+            }
+            val uri = Uri.parse(decodedUrl)
         if (uri != null) {
             if (uri.fragment.isNullOrEmpty() && !fragment.isNullOrEmpty()) {
                 decodedUrl += "#${fragment}"

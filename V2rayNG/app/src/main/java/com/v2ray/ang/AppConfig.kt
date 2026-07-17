@@ -173,6 +173,10 @@ object AppConfig {
     const val MSG_MEASURE_CONFIG_SUCCESS = 72
     const val MSG_MEASURE_CONFIG_NOTIFY = 73
     const val MSG_MEASURE_CONFIG_FINISH = 74
+    const val MSG_SPEED_UPDATE = 8
+
+    /** A4: момент старта туннеля (пишет сервис, читает UI для таймера сессии). */
+    const val A4_CONNECT_TS = "a4_connect_ts"
 
     /** Notification channel IDs and names. */
     const val RAY_NG_CHANNEL_ID = "RAY_NG_M_CH_ID"

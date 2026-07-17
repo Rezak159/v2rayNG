@@ -116,6 +116,10 @@ class MainViewModel(
     )
     val locateEvent: SharedFlow<LocateTarget> = _locateEvent.asSharedFlow()
 
+    // A4: скорость прокси из сервиса — (downlink, uplink), байт/сек
+    private val _proxySpeed = MutableStateFlow(0L to 0L)
+    val proxySpeed: StateFlow<Pair<Long, Long>> = _proxySpeed.asStateFlow()
+
     private val cacheMutex = Mutex()
     private val groupDataCache = mutableMapOf<String, List<ServersCache>>()
 
@@ -1029,6 +1033,7 @@ class MainViewModel(
         running: Boolean,
         clearTestingText: Boolean = true
     ) {
+        if (!running) _proxySpeed.value = 0L to 0L
         _uiState.update { state ->
             state.copy(
                 isRunning = running,
@@ -1095,6 +1100,17 @@ class MainViewModel(
 
                     AppConfig.MSG_STATE_STOP_SUCCESS -> {
                         updateRunningState(false)
+                    }
+
+                    AppConfig.MSG_SPEED_UPDATE -> {
+                        val parts = intent.getStringExtra("content")
+                            .orEmpty()
+                            .split(',')
+                        if (parts.size == 2) {
+                            _proxySpeed.value =
+                                (parts[0].toLongOrNull() ?: 0L) to
+                                    (parts[1].toLongOrNull() ?: 0L)
+                        }
                     }
 
                     AppConfig.MSG_MEASURE_DELAY_SUCCESS -> {
