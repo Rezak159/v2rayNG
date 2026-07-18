@@ -1,0 +1,48 @@
+[
+  {
+    "remarks": "Блокировка: реклама, телеметрия, торренты",
+    "outboundTag": "block",
+    "domain": [
+      "geosite:win-spy",
+      "geosite:torrent",
+      "geosite:category-ads"
+    ]
+  },
+  {
+    "remarks": "Через прокси: заблокированные сервисы",
+    "outboundTag": "proxy",
+    "domain": [
+      "geosite:google-play",
+      "geosite:github",
+      "geosite:twitch-ads",
+      "geosite:youtube",
+      "geosite:telegram"
+    ]
+  },
+  {
+    "remarks": "Напрямую: домены РФ и вайтлист",
+    "outboundTag": "direct",
+    "domain": [
+      "geosite:private",
+      "geosite:category-ru",
+      "geosite:whitelist",
+      "geosite:microsoft",
+      "geosite:apple",
+      "geosite:epicgames",
+      "geosite:riot",
+      "geosite:escapefromtarkov",
+      "geosite:steam",
+      "geosite:twitch",
+      "geosite:pinterest",
+      "geosite:faceit"
+    ]
+  },
+  {
+    "remarks": "Напрямую: IP РФ и локальная сеть",
+    "outboundTag": "direct",
+    "ip": [
+      "geoip:private",
+      "geoip:direct"
+    ]
+  }
+]

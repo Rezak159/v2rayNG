@@ -5,7 +5,7 @@ import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.UrlContentRequest
 import com.v2ray.ang.dto.entities.AssetUrlCache
 import com.v2ray.ang.dto.entities.AssetUrlItem
-import com.v2ray.ang.extension.concatUrl
+import com.v2ray.ang.handler.GeoUpdater
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.util.HttpUtil
 import com.v2ray.ang.util.LogUtil
@@ -48,13 +48,22 @@ class UserAssetViewModel : ViewModel() {
                     Utils.getUuid(),
                     AssetUrlItem(
                         it,
-                        String.format(AppConfig.GITHUB_DOWNLOAD_URL, geoFilesSource).concatUrl(it),
+                        geoFileUrl(it, geoFilesSource),
                         locked = true
                     )
                 )
             }
         // Force update URL for geoip-only-cn-private.dat
-        return (builtInItems + savedAssets).map { cache ->
+        return updateCnPrivateUrl(builtInItems + savedAssets)
+    }
+
+    // a4vpn: source-aware URLs live in GeoUpdater (shared with the auto-update task)
+    private fun geoFileUrl(geoFile: String, geoFilesSource: String): String {
+        return GeoUpdater.geoFileUrl(geoFile, geoFilesSource)
+    }
+
+    private fun updateCnPrivateUrl(assetList: List<AssetUrlCache>): List<AssetUrlCache> {
+        return assetList.map { cache ->
             if (cache.assetUrl.remarks == AppConfig.GEOIP_ONLY_CN_PRIVATE_DAT) {
                 cache.copy(
                     assetUrl = cache.assetUrl.copy(

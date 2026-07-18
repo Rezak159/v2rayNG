@@ -46,6 +46,9 @@ object AppConfig {
     const val PREF_FRAGMENT_MAXSPLIT = "pref_fragment_maxsplit"
     const val SUBSCRIPTION_UPDATE_TASK_NAME = "subscription_updater"
     const val SUBSCRIPTION_MIN_INTERVAL_MINUTES = 15L
+
+    // a4vpn: periodic auto-update of the built-in geo databases
+    const val GEO_UPDATE_TASK_NAME = "geo_updater"
     const val PREF_SPEED_ENABLED = "pref_speed_enabled"
     const val PREF_CONFIRM_REMOVE = "pref_confirm_remove"
     const val PREF_START_SCAN_IMMEDIATE = "pref_start_scan_immediate"
@@ -133,8 +136,10 @@ object AppConfig {
     const val IP_API_URL = "https://api.ip.sb/geoip"
 
     /** DNS server addresses. */
-    const val DNS_PROXY = "https://cloudflare-dns.com/dns-query"
-    const val DNS_DIRECT = "223.5.5.5"
+    // a4vpn: RoscomVPN defaults — remote via DoH 8.8.8.8 (resolved through proxy),
+    // domestic via Yandex DoH (resolved directly, correct RU geolocation)
+    const val DNS_PROXY = "https://8.8.8.8/dns-query"
+    const val DNS_DIRECT = "https://77.88.8.8/dns-query"
     const val DNS_VPN = "1.1.1.1"
     const val GEOSITE_PRIVATE = "geosite:private"
     const val GEOSITE_CN = "geosite:cn"
@@ -146,6 +151,12 @@ object AppConfig {
     const val GEOIP_DAT = "geoip.dat"
     const val GEOIP_ONLY_CN_PRIVATE_DAT = "geoip-only-cn-private.dat"
     const val GEOIP_ONLY_CN_PRIVATE_URL = "$GITHUB_RAW_URL/Loyalsoldier/geoip/release/$GEOIP_ONLY_CN_PRIVATE_DAT"
+
+    // a4vpn: RoscomVPN geo data (RU/BY optimized); geoip and geosite live in separate repos,
+    // so this source is special-cased in UserAssetViewModel.buildAssetList
+    const val ROSCOM_GEO_SOURCE = "hydraponique/roscomvpn"
+    const val ROSCOM_GEOIP_URL = "$GITHUB_URL/hydraponique/roscomvpn-geoip/releases/latest/download/geoip.dat"
+    const val ROSCOM_GEOSITE_URL = "$GITHUB_URL/hydraponique/roscomvpn-geosite/releases/latest/download/geosite.dat"
 
     /** Ports and addresses for various services. */
     const val PORT_LOCAL_DNS = "10853"
@@ -319,6 +330,7 @@ object AppConfig {
     )
 
     val GEO_FILES_SOURCES = arrayListOf(
+        ROSCOM_GEO_SOURCE,
         "Loyalsoldier/v2ray-rules-dat",
         "runetfreedom/russia-v2ray-rules-dat",
         "Chocolate4U/Iran-v2ray-rules"

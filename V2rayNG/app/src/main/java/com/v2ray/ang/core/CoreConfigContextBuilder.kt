@@ -31,8 +31,14 @@ object CoreConfigContextBuilder {
         val config = MmkvManager.decodeServerConfig(guid) ?: return null
 
         // CUSTOM: return immediately — CoreConfigManager handles this path on its own.
+        // a4vpn: domain rules are still collected so the forced app routing/DNS can be built.
         if (config.configType == EConfigType.CUSTOM) {
-            return CoreConfigContext(context = context, guid = guid, isCustom = true)
+            return CoreConfigContext(
+                context = context,
+                guid = guid,
+                isCustom = true,
+                routingDomainRules = collectRoutingDomainRulesForDns(),
+            )
         }
 
         // Step 1: Resolve the main outbound (always tag = TAG_PROXY).

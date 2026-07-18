@@ -452,11 +452,7 @@
     </string-array>
 
     <string-array name="preset_rulesets">
-        <item>China Whitelist</item>
-        <item>China Blacklist</item>
-        <item>Global</item>
-        <item>Iran Whitelist</item>
-        <item>Russia Whitelist</item>
+        <item>Russia (RoscomVPN)</item>
     </string-array>
 
     <string-array name="vpn_bypass_lan">

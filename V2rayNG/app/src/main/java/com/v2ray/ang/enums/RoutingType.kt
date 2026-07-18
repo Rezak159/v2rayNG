@@ -1,6 +1,8 @@
 package com.v2ray.ang.enums
 
 enum class RoutingType(val fileName: String) {
+    // a4vpn: the only preset offered in the UI (see R.array.preset_rulesets)
+    ROSCOM("custom_routing_roscom"),
     WHITE("custom_routing_white"),
     BLACK("custom_routing_black"),
     GLOBAL("custom_routing_global"),
@@ -10,12 +12,13 @@ enum class RoutingType(val fileName: String) {
     companion object {
         fun fromIndex(index: Int): RoutingType {
             return when (index) {
-                0 -> WHITE
-                1 -> BLACK
-                2 -> GLOBAL
-                3 -> WHITE_IRAN
-                4 -> WHITE_RUSSIA
-                else -> WHITE
+                0 -> ROSCOM
+                1 -> WHITE
+                2 -> BLACK
+                3 -> GLOBAL
+                4 -> WHITE_IRAN
+                5 -> WHITE_RUSSIA
+                else -> ROSCOM
             }
         }
     }

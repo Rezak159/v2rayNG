@@ -3,6 +3,7 @@ package com.v2ray.ang.core
 import android.content.Context
 import android.text.TextUtils
 import com.google.gson.JsonArray
+import com.google.gson.JsonObject
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.ConfigResult
 import com.v2ray.ang.dto.CoreConfigContext
@@ -82,11 +83,16 @@ object CoreConfigManager {
         val raw = MmkvManager.decodeServerRaw(configContext.guid)
             ?: return ConfigResult(status = false, guid = configContext.guid, errorMessage = "Custom config is empty")
         val result = ConfigResult(true, configContext.guid, raw)
-        if (!needTun()) {
-            return result
-        }
 
         val json = JsonUtil.parseString(raw)?.takeIf { it.isJsonObject }?.asJsonObject ?: return result
+
+        // a4vpn: the app's routing and DNS always win over whatever the custom
+        // profile (e.g. a subscription JSON) brought along.
+        applyAppRoutingAndDns(configContext, json)
+
+        if (!needTun()) {
+            return JsonUtil.toJsonPretty(json)?.let { ConfigResult(true, configContext.guid, it) } ?: result
+        }
 
         // Check whether package names need to be replaced with UIDs
         if (SettingsManager.canUseProcessRouting()) {
@@ -125,6 +131,53 @@ object CoreConfigManager {
         }
 
         return JsonUtil.toJsonPretty(json)?.let { ConfigResult(true, configContext.guid, it) } ?: result
+    }
+
+    /**
+     * a4vpn: replace the routing and DNS sections of a custom profile with the
+     * ones built from the app's own settings and rulesets. The profile keeps its
+     * outbounds (servers, keys, transports) untouched; builtin rule tags are
+     * reconciled with the profile's outbound tags.
+     */
+    private fun applyAppRoutingAndDns(configContext: CoreConfigContext, json: JsonObject) {
+        val outboundsJson = json.get("outbounds")?.takeIf { it.isJsonArray }?.asJsonArray ?: return
+        val firstOutbound = outboundsJson.firstOrNull()?.takeIf { it.isJsonObject }?.asJsonObject ?: return
+
+        val template = initV2rayConfig(configContext)
+        configureRouting(configContext, template, emptyMap())
+        configureDns(configContext, template, emptyMap())
+
+        // The first outbound is the profile's main proxy by convention. Untagged —
+        // tag it TAG_PROXY; tagged differently — rewrite the rules to its tag.
+        val proxyTag = firstOutbound.get("tag")
+            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+            ?.asString
+        if (proxyTag.isNullOrEmpty()) {
+            firstOutbound.addProperty("tag", AppConfig.TAG_PROXY)
+        } else if (proxyTag != AppConfig.TAG_PROXY) {
+            template.routing.rules.forEach { rule ->
+                if (rule.outboundTag == AppConfig.TAG_PROXY) {
+                    rule.outboundTag = proxyTag
+                }
+            }
+        }
+
+        // Rules also target direct/block outbounds — add them if the profile has none.
+        val existingTags = outboundsJson.mapNotNull { elem ->
+            elem.takeIf { it.isJsonObject }?.asJsonObject?.get("tag")
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                ?.asString
+        }.toSet()
+        listOf(AppConfig.TAG_DIRECT, AppConfig.TAG_BLOCKED)
+            .filter { it !in existingTags }
+            .forEach { tag ->
+                template.outbounds.firstOrNull { it.tag == tag }?.let { outbound ->
+                    outboundsJson.add(JsonUtil.parseString(JsonUtil.toJson(outbound)))
+                }
+            }
+
+        json.add("routing", JsonUtil.parseString(JsonUtil.toJson(template.routing)))
+        template.dns?.let { json.add("dns", JsonUtil.parseString(JsonUtil.toJson(it))) }
     }
 
     /**
@@ -902,6 +955,11 @@ object CoreConfigManager {
         hosts[AppConfig.DNS_QUAD9_DOMAIN] = AppConfig.DNS_QUAD9_ADDRESSES
         hosts[AppConfig.DNS_SB_DOMAIN] = AppConfig.DNS_SB_ADDRESSES
         hosts[AppConfig.DNS_YANDEX_DOMAIN] = AppConfig.DNS_YANDEX_ADDRESSES
+
+        // a4vpn: pin FNS (nalog.ru) services to their direct IPs, as in
+        // hydraponique/roscomvpn-routing — they break when resolved via proxy
+        hosts["lkfl2.nalog.ru"] = "213.24.64.175"
+        hosts["lknpd.nalog.ru"] = "213.24.64.181"
 
         val userHosts = MmkvManager.decodeSettingsString(AppConfig.PREF_DNS_HOSTS)
         if (userHosts.isNotNullEmpty()) {

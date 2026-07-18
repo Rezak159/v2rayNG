@@ -449,11 +449,7 @@
     </string-array>
 
     <string-array name="preset_rulesets">
-        <item>Белый список Китая</item>
-        <item>Чёрный список Китая</item>
-        <item>Общие</item>
-        <item>Белый список Ирана</item>
-        <item>Белый список России</item>
+        <item>Россия (RoscomVPN)</item>
     </string-array>
 
     <string-array name="vpn_bypass_lan">

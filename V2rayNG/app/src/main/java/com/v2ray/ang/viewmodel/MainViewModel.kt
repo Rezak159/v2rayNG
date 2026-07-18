@@ -24,6 +24,7 @@ import com.v2ray.ang.extension.matchesPattern
 import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.AngConfigManager
+import com.v2ray.ang.handler.GeoUpdater
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.SubscriptionUpdater
@@ -187,6 +188,7 @@ class MainViewModel(
 
                 SettingsManager.initAssets(app, app.assets)
                 SubscriptionUpdater.sync(app)
+                GeoUpdater.sync(app)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {

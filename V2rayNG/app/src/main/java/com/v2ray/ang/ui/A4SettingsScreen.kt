@@ -28,6 +28,10 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,10 +49,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.BuildConfig
+import com.v2ray.ang.handler.GeoUpdater
 import com.v2ray.ang.handler.MmkvManager.rememberMmkvBool
 import com.v2ray.ang.handler.MmkvManager.rememberMmkvString
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private const val BOT_URL = "https://t.me/a4securebot"
 private val TelegramBlue = Color(0xFF229ED9)
@@ -103,6 +114,13 @@ private fun A4SettingsContent(
     var showSpeed by rememberMmkvBool(AppConfig.PREF_SPEED_ENABLED, false)
     var logLevel by rememberMmkvString(AppConfig.PREF_LOGLEVEL, "warning")
 
+    val scope = rememberCoroutineScope()
+    var geoRefresh by remember { mutableIntStateOf(0) }
+    var geoUpdating by remember { mutableStateOf(false) }
+    var geoStatus by remember { mutableStateOf<String?>(null) }
+    val geositeDate = remember(geoRefresh) { geoFileDateText(context, AppConfig.GEOSITE_DAT) }
+    val geoipDate = remember(geoRefresh) { geoFileDateText(context, AppConfig.GEOIP_DAT) }
+
     Box(Modifier.fillMaxSize().background(A4Paper)) {
         Column(
             modifier = Modifier
@@ -145,6 +163,32 @@ private fun A4SettingsContent(
                             if (it) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff,
                         )
                         showSpeed = it
+                    },
+                )
+            }
+
+            Spacer(Modifier.height(20.dp))
+            A4SectionLabel("ГЕОБАЗЫ")
+            Spacer(Modifier.height(10.dp))
+            SettingsCard {
+                SettingsInfoRow("Домены (geosite)", geositeDate)
+                HorizontalDivider(color = A4Border)
+                SettingsInfoRow("IP-адреса (geoip)", geoipDate)
+                HorizontalDivider(color = A4Border)
+                SettingsLinkRow(
+                    title = if (geoUpdating) "Обновление…" else "Обновить базы",
+                    description = geoStatus ?: "списки роутинга RoscomVPN, обновляются раз в день",
+                    onClick = {
+                        if (geoUpdating) return@SettingsLinkRow
+                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                        geoUpdating = true
+                        geoStatus = null
+                        scope.launch {
+                            val count = withContext(Dispatchers.IO) { GeoUpdater.updateGeoFiles(context) }
+                            geoStatus = if (count > 0) "обновлено" else "не удалось — проверьте подключение"
+                            geoUpdating = false
+                            geoRefresh++
+                        }
                     },
                 )
             }
@@ -196,6 +240,13 @@ private fun A4SettingsContent(
             Spacer(Modifier.height(24.dp))
         }
     }
+}
+
+/** Дата последнего обновления геобазы или «не загружена». */
+private fun geoFileDateText(context: android.content.Context, fileName: String): String {
+    val timestamp = GeoUpdater.geoFileLastModified(context, fileName)
+    if (timestamp <= 0L) return "не загружена"
+    return SimpleDateFormat("d MMMM yyyy", Locale.forLanguageTag("ru")).format(Date(timestamp))
 }
 
 /** Стрелка «назад», нарисованная руками. */
