@@ -3,10 +3,12 @@ package com.v2ray.ang.handler
 import android.content.Context
 import android.graphics.Bitmap
 import android.text.TextUtils
+import android.util.Base64
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.core.CoreConfigManager
 import com.v2ray.ang.dto.SubscriptionUpdateResult
+import com.v2ray.ang.dto.SubscriptionUserInfo
 import com.v2ray.ang.dto.UrlContentRequest
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.dto.entities.SubscriptionCache
@@ -28,6 +30,7 @@ import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.QRCodeDecoder
 import com.v2ray.ang.util.Utils
 import java.net.URI
+import java.util.concurrent.TimeUnit
 
 object AngConfigManager {
 
@@ -236,6 +239,8 @@ object AngConfigManager {
             if (servers == null) {
                 return 0
             }
+            // Был ли выбран сервер до импорта — замеряем ДО любых изменений хранилища.
+            val hadSelection = !MmkvManager.getSelectServer().isNullOrBlank()
             // Find the currently selected server that belongs to the same subscription before replacement.
             val removedSelected = getRemovedSelectedProfile(subid, append)
 
@@ -259,8 +264,7 @@ object AngConfigManager {
                     MmkvManager.removeServerViaSubid(subid)
                 }
                 val keyToProfile = batchSaveConfigs(configs, subid)
-                val matchKey = findMatchedProfileKey(keyToProfile, removedSelected)
-                matchKey?.let { MmkvManager.setSelectServer(it) }
+                applyDefaultSelection(subid, hadSelection, keyToProfile, removedSelected)
             }
 
             return configs.size
@@ -356,6 +360,32 @@ object AngConfigManager {
     }
 
     /**
+     * Выбирает сервер по умолчанию после импорта подписки:
+     *  - если сервер уже был выбран до импорта (обновление) — восстанавливаем его же;
+     *  - если выбранного не было (первая установка) — берём ПЕРВЫЙ сервер подписки.
+     *
+     * hadSelection нужно замерять ДО сохранения конфигов: в custom-пути encodeServerConfig
+     * сам авто-выбирает первый сохранённый сервер, а из-за reversed-обхода это фактически
+     * последний сервер подписки — из-за чего при первой установке выбирался последний.
+     * Первый сервер берём из decodeServerList (там порядок исходный), а не из keyToProfile,
+     * порядок которого тоже перевёрнут.
+     */
+    private fun applyDefaultSelection(
+        subid: String,
+        hadSelection: Boolean,
+        keyToProfile: Map<String, ProfileItem>,
+        removedSelected: ProfileItem?,
+    ) {
+        if (!hadSelection) {
+            MmkvManager.decodeServerList(subid).firstOrNull()
+                ?.let { MmkvManager.setSelectServer(it) }
+        } else {
+            findMatchedProfileKey(keyToProfile, removedSelected)
+                ?.let { MmkvManager.setSelectServer(it) }
+        }
+    }
+
+    /**
      * Returns the currently selected profile if it belongs to the target subscription and will be replaced.
      */
     private fun getRemovedSelectedProfile(subid: String, append: Boolean): ProfileItem? {
@@ -400,6 +430,9 @@ object AngConfigManager {
                     JsonUtil.fromJson(server, Array<Any>::class.java) ?: arrayOf()
 
                 if (serverList.isNotEmpty()) {
+                    // Был ли выбран сервер до импорта — замеряем ДО сохранения конфигов,
+                    // т.к. encodeServerConfig ниже сам авто-выбирает первый сохранённый.
+                    val hadSelection = !MmkvManager.getSelectServer().isNullOrBlank()
                     val removedSelected = getRemovedSelectedProfile(subid, append)
                     if (!append) {
                         MmkvManager.removeServerViaSubid(subid)
@@ -416,8 +449,7 @@ object AngConfigManager {
                         count += 1
                     }
                     if (count > 0) {
-                        val matchKey = findMatchedProfileKey(keyToProfile, removedSelected)
-                        matchKey?.let { MmkvManager.setSelectServer(it) }
+                        applyDefaultSelection(subid, hadSelection, keyToProfile, removedSelected)
                     }
                     return count
                 }
@@ -560,9 +592,10 @@ object AngConfigManager {
             val proxyUsername = SettingsManager.getSocksUsername()
             val proxyPassword = SettingsManager.getSocksPassword()
 
+            var headers: Map<String, String> = emptyMap()
             var configText = try {
                 val httpPort = SettingsManager.getHttpPort()
-                HttpUtil.getUrlContentWithUserAgent(
+                val (body, respHeaders) = HttpUtil.getUrlContentWithHeaders(
                     UrlContentRequest(
                         url = url,
                         userAgent = userAgent,
@@ -572,31 +605,49 @@ object AngConfigManager {
                         proxyPassword = proxyPassword
                     )
                 )
+                headers = respHeaders
+                body
             } catch (e: Exception) {
                 LogUtil.e(AppConfig.ANG_PACKAGE, "Update subscription: proxy not ready or other error", e)
                 ""
             }
             if (configText.isEmpty()) {
                 configText = try {
-                    HttpUtil.getUrlContentWithUserAgent(
+                    val (body, respHeaders) = HttpUtil.getUrlContentWithHeaders(
                         UrlContentRequest(
                             url = url,
                             userAgent = userAgent
                         )
                     )
+                    headers = respHeaders
+                    body
                 } catch (e: Exception) {
                     LogUtil.e(AppConfig.TAG, "Update subscription: Failed to get URL content with user agent", e)
                     ""
                 }
             }
             if (configText.isEmpty()) {
+                LogUtil.e(AppConfig.TAG, "Subscription ${it.subscription.remarks}: empty response from $url")
                 return SubscriptionUpdateResult(failureCount = 1)
             }
 
             val count = parseConfigViaSub(configText, it.guid, false)
             if (count > 0) {
                 it.subscription.lastUpdated = System.currentTimeMillis()
+
+                val wasScheduled = it.subscription.autoUpdate
+                val prevInterval = it.subscription.updateInterval
+                applySubscriptionHeaders(it.subscription, headers)
+
+                // a4vpn: the subscription is ours — keep it updating in the background.
+                // Done here (and not only on import) so installs made before this
+                // existed also switch over on their first refresh.
+                it.subscription.autoUpdate = true
+
                 MmkvManager.encodeSubscription(it.guid, it.subscription)
+                if (!wasScheduled || prevInterval != it.subscription.updateInterval) {
+                    SubscriptionUpdater.syncOne(subId = it.guid)
+                }
                 LogUtil.i(AppConfig.TAG, "Subscription updated: ${it.subscription.remarks}, $count configs")
                 return SubscriptionUpdateResult(
                     configCount = count,
@@ -604,6 +655,7 @@ object AngConfigManager {
                 )
             } else {
                 // Got response but no valid configs parsed
+                LogUtil.e(AppConfig.TAG, "Subscription ${it.subscription.remarks}: no configs in ${configText.length}-byte response")
                 return SubscriptionUpdateResult(failureCount = 1)
             }
         } catch (e: Exception) {
@@ -632,6 +684,38 @@ object AngConfigManager {
     }
 
     /**
+     * Складывает метаданные из заголовков подписки (лимиты трафика, срок, название)
+     * в [SubscriptionItem]. Отсутствующие заголовки не трогают прежние значения.
+     */
+    private fun applySubscriptionHeaders(sub: SubscriptionItem, headers: Map<String, String>) {
+        SubscriptionUserInfo.parse(headers["subscription-userinfo"])?.let { info ->
+            sub.uploadBytes = info.upload
+            sub.downloadBytes = info.download
+            sub.totalBytes = info.total
+            sub.expire = info.expire
+        }
+        decodeProfileTitle(headers["profile-title"])?.let { sub.title = it }
+        headers["subscription-refill-date"]?.trim()?.toLongOrNull()?.let { sub.refill = it }
+
+        // a4vpn: период фонового обновления задаёт панель, `profile-update-interval` в часах
+        val intervalHours = headers["profile-update-interval"]?.trim()?.toLongOrNull()
+        sub.updateInterval = if (intervalHours != null && intervalHours in 1..168) {
+            TimeUnit.HOURS.toMinutes(intervalHours)
+        } else {
+            AppConfig.SUBSCRIPTION_DEFAULT_INTERVAL_MINUTES
+        }
+    }
+
+    /** Декодирует `profile-title` (может быть в виде `base64:...`). */
+    private fun decodeProfileTitle(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        if (!raw.startsWith("base64:")) return raw
+        return runCatching {
+            String(Base64.decode(raw.removePrefix("base64:"), Base64.DEFAULT)).trim()
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
+    /**
      * Imports a URL as a subscription.
      *
      * @param url The URL.
@@ -639,18 +723,24 @@ object AngConfigManager {
      */
     private fun importUrlAsSubscription(url: String): Int {
         val subscriptions = MmkvManager.decodeSubscriptions()
-        if (subscriptions.isNotEmpty()) {
-            return 0
+        val existing = subscriptions.firstOrNull { it.subscription.url == url }
+        if (existing != null) {
+            // Подписка уже заведена. Серверов у неё нет — значит прошлый импорт не
+            // докачался (сеть); тогда повтор должен перекачать её, а не молча упасть.
+            return if (MmkvManager.decodeServerList(existing.guid).isEmpty()) 1 else 0
         }
-        subscriptions.forEach {
-            if (it.subscription.url == url) {
-                return 0
-            }
+        // a4vpn: платная подписка на устройстве одна, бесплатная живёт рядом с ней.
+        val isFree = url == AppConfig.FREE_SUB_URL
+        if (!isFree && subscriptions.any { it.subscription.url != AppConfig.FREE_SUB_URL }) {
+            return 0
         }
         val uri = URI(Utils.fixIllegalUrl(url))
         val subItem = SubscriptionItem()
-        subItem.remarks = uri.fragment ?: "import sub"
+        subItem.remarks = if (isFree) AppConfig.FREE_SUB_REMARKS else uri.fragment ?: "import sub"
         subItem.url = url
+        // a4vpn: background updates on by default, see updateConfigViaSub
+        subItem.autoUpdate = true
+        subItem.updateInterval = AppConfig.SUBSCRIPTION_DEFAULT_INTERVAL_MINUTES
         MmkvManager.encodeSubscription("", subItem)
         return 1
     }

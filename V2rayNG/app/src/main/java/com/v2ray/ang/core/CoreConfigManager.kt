@@ -86,9 +86,17 @@ object CoreConfigManager {
 
         val json = JsonUtil.parseString(raw)?.takeIf { it.isJsonObject }?.asJsonObject ?: return result
 
-        // a4vpn: the app's routing and DNS always win over whatever the custom
-        // profile (e.g. a subscription JSON) brought along.
-        applyAppRoutingAndDns(configContext, json)
+        // a4vpn: an imported config often carries a log section from another platform
+        // (Happ on macOS/Windows), whose file paths do not exist here — the core would
+        // fail to start on them.
+        json.add("log", JsonObject().apply {
+            addProperty("loglevel", MmkvManager.decodeSettingsString(AppConfig.PREF_LOGLEVEL) ?: "warning")
+        })
+
+        // a4vpn: a custom profile keeps its own routing unless it asks for the app's.
+        if (usesAppRouting(json)) {
+            applyAppRoutingAndDns(configContext, json)
+        }
 
         if (!needTun()) {
             return JsonUtil.toJsonPretty(json)?.let { ConfigResult(true, configContext.guid, it) } ?: result
@@ -131,6 +139,24 @@ object CoreConfigManager {
         }
 
         return JsonUtil.toJsonPretty(json)?.let { ConfigResult(true, configContext.guid, it) } ?: result
+    }
+
+    /**
+     * a4vpn: read and strip the profile's own options object.
+     *
+     * A custom config marked with {"a4vpn": {"routing": "app"}} hands routing
+     * and DNS over to the app — that is how the regular locations get the
+     * RoscomVPN ruleset. Special-purpose locations ship without the marker and
+     * keep whatever the server put in them.
+     */
+    private fun usesAppRouting(json: JsonObject): Boolean {
+        val options = json.remove(AppConfig.CUSTOM_OPTIONS_KEY)
+            ?.takeIf { it.isJsonObject }?.asJsonObject
+            ?: return false
+        val routing = options.get(AppConfig.CUSTOM_OPTIONS_ROUTING)
+            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+            ?.asString
+        return routing == AppConfig.CUSTOM_ROUTING_FROM_APP
     }
 
     /**

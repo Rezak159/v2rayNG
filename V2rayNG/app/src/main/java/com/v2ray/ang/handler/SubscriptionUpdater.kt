@@ -1,6 +1,5 @@
 package com.v2ray.ang.handler
 
-import android.annotation.SuppressLint
 import android.content.Context
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -12,11 +11,8 @@ import androidx.work.multiprocess.RemoteWorkManager
 import androidx.work.workDataOf
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
-import com.v2ray.ang.R
 import com.v2ray.ang.dto.entities.SubscriptionCache
-import com.v2ray.ang.enums.NotificationChannelType
 import com.v2ray.ang.util.LogUtil
-import com.v2ray.ang.util.NotificationHelper
 import java.util.concurrent.TimeUnit
 
 object SubscriptionUpdater {
@@ -150,7 +146,6 @@ object SubscriptionUpdater {
     class UpdateTask(context: Context, params: WorkerParameters) :
         CoroutineWorker(context, params) {
 
-        @SuppressLint("MissingPermission")
         override suspend fun doWork(): Result {
             val subId = inputData.getString(KEY_SUB_ID)
             LogUtil.i(AppConfig.TAG, "SubscriptionUpdater automatic update starting: $subId")
@@ -173,19 +168,9 @@ object SubscriptionUpdater {
 
             val sub = SubscriptionCache(subId, subItem)
 
-            // Notify about update start
-            NotificationHelper.notify(
-                NotificationChannelType.SUBSCRIPTION_UPDATE,
-                applicationContext,
-                applicationContext.getString(R.string.title_pref_auto_update_subscription),
-                "Updating ${sub.subscription.remarks}"
-            )
-
+            // a4vpn: no notification — the update is routine and runs every few hours
             LogUtil.i(AppConfig.TAG, "SubscriptionUpdater automatic update: ---${sub.subscription.remarks}")
             AngConfigManager.updateConfigViaSub(sub)
-
-            // Clear notification
-            NotificationHelper.cancel(NotificationChannelType.SUBSCRIPTION_UPDATE, applicationContext)
 
             return Result.success()
         }

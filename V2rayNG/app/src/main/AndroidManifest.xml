@@ -161,6 +161,18 @@
                 <data android:host="install-config" />
                 <data android:host="install-sub" />
             </intent-filter>
+            <!-- a4vpn: sign-in link sent by the Telegram bot -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.BROWSABLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data
+                    android:scheme="https"
+                    android:host="import.a4secure.xyz"
+                    android:pathPrefix="/app/sub/" />
+            </intent-filter>
         </activity>
         <activity
             android:name=".ui.CheckUpdateActivity"

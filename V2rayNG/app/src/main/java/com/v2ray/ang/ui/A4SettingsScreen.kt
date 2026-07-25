@@ -49,7 +49,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.BuildConfig
+import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.handler.GeoUpdater
+import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.MmkvManager.rememberMmkvBool
 import com.v2ray.ang.handler.MmkvManager.rememberMmkvString
 import com.v2ray.ang.util.LogUtil
@@ -60,6 +62,7 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 private const val BOT_URL = "https://t.me/a4securebot"
 private val TelegramBlue = Color(0xFF229ED9)
@@ -114,6 +117,15 @@ private fun A4SettingsContent(
     var showSpeed by rememberMmkvBool(AppConfig.PREF_SPEED_ENABLED, false)
     var logLevel by rememberMmkvString(AppConfig.PREF_LOGLEVEL, "warning")
 
+    val subscription = remember { activeSubscription() }
+    // Платной подписки нет — значит человек вошёл без ключа и сидит на бесплатном
+    // Telegram. Показываем, как получить полный доступ.
+    val onFreePlan = remember {
+        MmkvManager.decodeSubscriptions().none {
+            it.subscription.url.isNotEmpty() && it.subscription.url != AppConfig.FREE_SUB_URL
+        }
+    }
+
     val scope = rememberCoroutineScope()
     var geoRefresh by remember { mutableIntStateOf(0) }
     var geoUpdating by remember { mutableStateOf(false) }
@@ -121,7 +133,15 @@ private fun A4SettingsContent(
     val geositeDate = remember(geoRefresh) { geoFileDateText(context, AppConfig.GEOSITE_DAT) }
     val geoipDate = remember(geoRefresh) { geoFileDateText(context, AppConfig.GEOIP_DAT) }
 
-    Box(Modifier.fillMaxSize().background(A4Paper)) {
+    // Встроенная вкладка не красит фон: под ней уже лежит A4Paper и общий A4Backdrop
+    // из A4AppHome — иначе непрозрачный фон перекрыл бы фигуры и они выглядели обрезанными.
+    // Полноэкранный вариант (Activity) рисует фон и фон-декор сам.
+    Box(
+        Modifier
+            .fillMaxSize()
+            .then(if (embedded) Modifier else Modifier.background(A4Paper)),
+    ) {
+        if (!embedded) A4Backdrop()
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -136,6 +156,27 @@ private fun A4SettingsContent(
                     Spacer(Modifier.width(10.dp))
                 }
                 Text("Настройки", style = MaterialTheme.typography.headlineMedium, color = A4Ink)
+            }
+
+            if (onFreePlan) {
+                Spacer(Modifier.height(20.dp))
+                A4SectionLabel("ПОДПИСКА")
+                Spacer(Modifier.height(10.dp))
+                SettingsCard {
+                    SettingsLinkRow(
+                        title = "Подключить подписку",
+                        description = "сейчас бесплатный доступ — работает только Telegram",
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                            Utils.openUri(context, BOT_URL)
+                        },
+                    )
+                }
+            } else if (subscription != null && subscription.hasTrafficInfo) {
+                Spacer(Modifier.height(20.dp))
+                A4SectionLabel("ПОДПИСКА")
+                Spacer(Modifier.height(10.dp))
+                SubscriptionCard(subscription)
             }
 
             Spacer(Modifier.height(20.dp))
@@ -269,6 +310,67 @@ private fun BackArrow(onClick: () -> Unit) {
     }
 }
 
+/** Блок подписки в настройках: название тарифа, трафик с полосой и срок действия. */
+@Composable
+private fun SubscriptionCard(sub: SubscriptionItem) {
+    val title = sub.title.ifBlank { sub.remarks.ifBlank { "Подписка" } }
+    SettingsCard {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                color = A4Ink,
+            )
+        }
+        HorizontalDivider(color = A4Border)
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Трафик",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = A4Ink,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    if (sub.isUnlimited) {
+                        "Безлимит"
+                    } else {
+                        "${formatGib(sub.usedBytes)} из ${formatGib(sub.totalBytes)} ГБ · " +
+                            "${(sub.usedFraction() * 100).roundToInt()}%"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = A4TextMuted,
+                )
+            }
+            if (!sub.isUnlimited) {
+                Spacer(Modifier.height(10.dp))
+                A4TrafficBar(sub.usedFraction(), Modifier.fillMaxWidth())
+                sub.refillDateText()?.let { date ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Обнулится $date",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = A4TextMuted,
+                    )
+                }
+            }
+        }
+        sub.expireDateText()?.let { date ->
+            HorizontalDivider(color = A4Border)
+            SettingsInfoRow("Действует до", date)
+        }
+        sub.lastUpdatedText()?.let { moment ->
+            HorizontalDivider(color = A4Border)
+            SettingsInfoRow("Обновлена", moment)
+        }
+    }
+}
+
 @Composable
 private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
     Column(
@@ -397,7 +499,22 @@ private fun SettingsLinkRow(title: String, description: String, onClick: () -> U
             )
             Text(description, style = MaterialTheme.typography.bodySmall, color = A4TextMuted)
         }
-        Text("→", style = MaterialTheme.typography.titleMedium, color = A4Ink)
+        Spacer(Modifier.width(12.dp))
+        ForwardArrow()
+    }
+}
+
+/** Стрелка «вперёд», нарисованная руками — ровно центрируется, в отличие от глифа «→». */
+@Composable
+private fun ForwardArrow(color: Color = A4Ink) {
+    Canvas(Modifier.size(18.dp)) {
+        val w = size.width
+        val h = size.height
+        val midY = h * 0.5f
+        val stroke = 2.dp.toPx()
+        drawLine(color, Offset(w * 0.1f, midY), Offset(w * 0.82f, midY), stroke, StrokeCap.Round)
+        drawLine(color, Offset(w * 0.55f, midY - h * 0.22f), Offset(w * 0.85f, midY), stroke, StrokeCap.Round)
+        drawLine(color, Offset(w * 0.55f, midY + h * 0.22f), Offset(w * 0.85f, midY), stroke, StrokeCap.Round)
     }
 }
 

@@ -13,8 +13,8 @@ android {
         applicationId = "com.a4vpn.app.alpha"
         minSdk = 24
         targetSdk = 37
-        versionCode = 736
-        versionName = "2.2.6"
+        versionCode = 1
+        versionName = "0.1-alpha"
 
         splits {
             abi {
@@ -36,18 +36,14 @@ android {
                 "proguard-rules.pro"
             )
         }
-    }
-
-    flavorDimensions.add("distribution")
-    productFlavors {
-        create("fdroid") {
-            dimension = "distribution"
-            applicationIdSuffix = ".fdroid"
-            buildConfigField("String", "DISTRIBUTION", "\"F-Droid\"")
-        }
-        create("playstore") {
-            dimension = "distribution"
-            buildConfigField("String", "DISTRIBUTION", "\"Play Store\"")
+        // Временный тип для замера производительности: релизный рантайм
+        // (не debuggable — Compose так работает в 3–5 раз быстрее), но подписан
+        // debug-ключом, поэтому ставится одной командой. Удалить после диагностики.
+        create("perf") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            matchingFallbacks += "release"
         }
     }
 
@@ -71,45 +67,12 @@ android {
 
     applicationVariants.all {
         val variant = this
-        val isFdroid = variant.productFlavors.any { it.name == "fdroid" }
-        if (isFdroid) {
-            val versionCodes =
-                mapOf(
-                    "arm64-v8a" to 1
-                )
-
-            variant.outputs
-                .map { it as com.android.build.gradle.internal.api.ApkVariantOutputImpl }
-                .forEach { output ->
-                    val abi = output.getFilter("ABI") ?: "universal"
-                    output.outputFileName = "A4VPN-App-Alpha_${variant.versionName}-fdroid_${abi}.apk"
-                    if (versionCodes.containsKey(abi)) {
-                        output.versionCodeOverride =
-                            (100 * variant.versionCode + versionCodes[abi]!!).plus(5000000)
-                    } else {
-                        return@forEach
-                    }
-                }
-        } else {
-            val versionCodes = mapOf("arm64-v8a" to 4)
-
-            variant.outputs
-                .map { it as com.android.build.gradle.internal.api.ApkVariantOutputImpl }
-                .forEach { output ->
-                    val abi = if (output.getFilter("ABI") != null)
-                        output.getFilter("ABI")
-                    else
-                        "universal"
-
-                    output.outputFileName = "A4VPN-App-Alpha_${variant.versionName}_${abi}.apk"
-                    if (versionCodes.containsKey(abi)) {
-                        output.versionCodeOverride =
-                            (1000000 * versionCodes[abi]!!).plus(variant.versionCode)
-                    } else {
-                        return@forEach
-                    }
-                }
-        }
+        variant.outputs
+            .map { it as com.android.build.gradle.internal.api.ApkVariantOutputImpl }
+            .forEach { output ->
+                val abi = output.getFilter("ABI") ?: "universal"
+                output.outputFileName = "A4VPN-Alpha_${variant.versionName}_${abi}.apk"
+            }
     }
 
     buildFeatures {

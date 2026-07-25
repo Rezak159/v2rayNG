@@ -162,6 +162,12 @@ import kotlinx.coroutines.yield
 import kotlin.math.abs
 
 class MainActivity : HelperBaseComponentActivity() {
+
+    companion object {
+        const val EXTRA_SUBSCRIPTION_URL = "com.v2ray.ang.SUBSCRIPTION_URL"
+        const val EXTRA_REPLACE_SUBSCRIPTION = "com.v2ray.ang.REPLACE_SUBSCRIPTION"
+    }
+
     private val mainViewModel: MainViewModel by viewModels()
 
     private val requestVpnPermission =
@@ -222,6 +228,41 @@ class MainActivity : HelperBaseComponentActivity() {
         mainViewModel.initialize()
 
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
+        importFromIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        importFromIntent(intent)
+    }
+
+    /**
+     * Imports a subscription handed over by [UrlSchemeActivity]. The extra is cleared
+     * once consumed, so a rotation or a return from background does not import twice.
+     */
+    private fun importFromIntent(intent: Intent?) {
+        val url = intent?.getStringExtra(EXTRA_SUBSCRIPTION_URL) ?: return
+        val replaceExisting = intent.getBooleanExtra(EXTRA_REPLACE_SUBSCRIPTION, false)
+        intent.removeExtra(EXTRA_SUBSCRIPTION_URL)
+
+        // Бесплатный профиль ключом не управляется и остаётся на месте при любом входе.
+        val subscriptions = MmkvManager.decodeSubscriptions()
+            .filter { it.subscription.url != AppConfig.FREE_SUB_URL }
+        if (subscriptions.isNotEmpty()) {
+            if (!replaceExisting) {
+                toastError(R.string.toast_action_not_allowed)
+                return
+            }
+            // The bot link is the only way in, so it has to be able to hand over a new
+            // key: renewed subscription, changed plan, or one that never yielded a server.
+            subscriptions.forEach {
+                MmkvManager.removeServerViaSubid(it.guid)
+                MmkvManager.removeSubscription(it.guid)
+            }
+        }
+
+        importBatchConfig(url)
     }
 
     @Composable
@@ -229,9 +270,9 @@ class MainActivity : HelperBaseComponentActivity() {
         A4MainScreen(
             mainViewModel = mainViewModel,
             onConnectionClick = ::handleFabAction,
-            onImportSubscription = ::importSubscription,
             onSelectServer = ::setSelectServer,
             onOpenLogcat = { navigateTo("logcat") },
+            onUseFree = { importBatchConfig(AppConfig.FREE_SUB_URL) },
         )
     }
 
@@ -333,48 +374,6 @@ class MainActivity : HelperBaseComponentActivity() {
             importBatchConfig(Utils.getClipboard(this))
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to import config from clipboard", e)
-        }
-    }
-
-    /** The simplified A4 entry point accepts one subscription URL only. */
-    private fun importSubscription(
-        url: String,
-        onResult: (Boolean) -> Unit,
-    ) {
-        val subscriptions = MmkvManager.decodeSubscriptions()
-        val hasUsableSubscription = subscriptions.any { subscription ->
-            MmkvManager.decodeServerList(subscription.guid).isNotEmpty()
-        }
-        if (hasUsableSubscription) {
-            onResult(true)
-            return
-        }
-
-        // A previous key may have been saved but never yielded a server.
-        // It must not lock the user out of entering a working replacement key.
-        subscriptions.forEach { subscription ->
-            MmkvManager.removeServerViaSubid(subscription.guid)
-            MmkvManager.removeSubscription(subscription.guid)
-        }
-
-        val subscriptionUrl = url.trim()
-        if (!Utils.isValidSubUrl(subscriptionUrl)) {
-            toastError(R.string.toast_failure)
-            onResult(false)
-            return
-        }
-        importBatchConfig(subscriptionUrl) { imported ->
-            if (!imported) {
-                // A subscription URL may be stored even if its first update failed.
-                // Do not let that empty entry lock the user out of trying again.
-                MmkvManager.decodeSubscriptions()
-                    .filter { MmkvManager.decodeServerList(it.guid).isEmpty() }
-                    .forEach {
-                        MmkvManager.removeServerViaSubid(it.guid)
-                        MmkvManager.removeSubscription(it.guid)
-                    }
-            }
-            onResult(imported)
         }
     }
 

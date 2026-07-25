@@ -356,10 +356,15 @@ class MainViewModel(
     ): String {
         val current = subscriptionId
 
+        // a4vpn: групп в интерфейсе нет, поэтому пустая выбранная группа выглядит
+        // как вечное «Загружаем сервер…». Держимся запомненной, только пока в ней
+        // есть серверы; иначе берём первую живую — после импорта подписки это она.
+        fun hasServers(id: String) = MmkvManager.decodeServerList(id).isNotEmpty()
+
         val resolved = when {
             groups.isEmpty() -> ""
-            groups.any { it.id == current } -> current
-            else -> groups.first().id
+            groups.any { it.id == current } && hasServers(current) -> current
+            else -> (groups.firstOrNull { hasServers(it.id) } ?: groups.first()).id
         }
 
         if (resolved != current) {

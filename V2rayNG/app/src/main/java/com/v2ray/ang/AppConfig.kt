@@ -47,8 +47,37 @@ object AppConfig {
     const val SUBSCRIPTION_UPDATE_TASK_NAME = "subscription_updater"
     const val SUBSCRIPTION_MIN_INTERVAL_MINUTES = 15L
 
+    // a4vpn: the subscription is ours, so auto-update is always on with a fixed interval
+    const val SUBSCRIPTION_DEFAULT_INTERVAL_MINUTES = 240L
+
     // a4vpn: periodic auto-update of the built-in geo databases
     const val GEO_UPDATE_TASK_NAME = "geo_updater"
+
+    // a4vpn: options a custom (JSON) profile may declare for the app itself.
+    // {"a4vpn": {"routing": "app"}} hands routing and DNS over to the app
+    // (the RoscomVPN ruleset); without it the profile keeps its own.
+    // The object is stripped before the config reaches the core.
+    // a4vpn: App Link that carries a subscription key from the Telegram bot, so the
+    // user signs in with a single tap instead of copying the key by hand:
+    // https://import.a4secure.xyz/app/sub/<base64url of the subscription url>
+    // The link never hits the network — Android resolves it to the app locally.
+    const val APP_LINK_HOST = "import.a4secure.xyz"
+    const val APP_LINK_SUB_PATH = "/app/sub/"
+    const val TELEGRAM_BOT_URL = "https://t.me/a4securebot"
+
+    // a4vpn: бесплатный профиль «вход без ключа» — одна локация, через которую
+    // ходит только Telegram (роутинг зашит в сам конфиг подписки). Живёт рядом с
+    // платной подпиской и не удаляется при входе по ключу из бота.
+    //
+    // Ссылка ведёт на наш сервер, а не напрямую на панель фри-сервиса: панель из
+    // РФ не открывается, а без VPN бесплатный профиль скачать больше нечем.
+    // Nginx там же подменяет User-Agent — по нему панель отдаёт конфиг с роутингом.
+    const val FREE_SUB_URL = "https://import.a4secure.xyz/free"
+    const val FREE_SUB_REMARKS = "Бесплатно"
+
+    const val CUSTOM_OPTIONS_KEY = "a4vpn"
+    const val CUSTOM_OPTIONS_ROUTING = "routing"
+    const val CUSTOM_ROUTING_FROM_APP = "app"
     const val PREF_SPEED_ENABLED = "pref_speed_enabled"
     const val PREF_CONFIRM_REMOVE = "pref_confirm_remove"
     const val PREF_START_SCAN_IMMEDIATE = "pref_start_scan_immediate"

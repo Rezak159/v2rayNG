@@ -542,14 +542,11 @@ object Utils {
      *
      * @return True if the package is Xray, false otherwise.
      */
-    fun isXray(): Boolean = BuildConfig.APPLICATION_ID.startsWith("com.v2ray.ang")
-
-    /**
-     * Check if it is the Google Play version.
-     *
-     * @return True if the package is Google Play, false otherwise.
-     */
-    fun isGoogleFlavor(): Boolean = BuildConfig.FLAVOR == "playstore"
+    // a4vpn: apps built from this fork always bundle the Xray core, so the check
+    // no longer looks at the application id (upstream used it to tell the Xray and
+    // v2ray-core builds apart). A "false" here silently moves the local HTTP proxy
+    // to another port and adds a second inbound.
+    fun isXray(): Boolean = true
 
     /**
      * Converts an InetAddress to its long representation

@@ -1,7 +1,7 @@
 package com.v2ray.ang.ui
 
-import android.content.ClipboardManager
-import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -43,7 +43,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -55,8 +54,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Home
@@ -65,15 +62,12 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -100,16 +94,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.entities.ServersCache
+import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.viewmodel.MainViewModel
@@ -118,6 +112,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.PI
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 private enum class A4Tab(val label: String) {
@@ -131,9 +126,9 @@ private enum class A4Tab(val label: String) {
 fun A4MainScreen(
     mainViewModel: MainViewModel,
     onConnectionClick: () -> Unit,
-    onImportSubscription: (String, (Boolean) -> Unit) -> Unit,
     onSelectServer: (String) -> Unit,
     onOpenLogcat: () -> Unit,
+    onUseFree: () -> Unit,
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
     // Читаем state.groups здесь, во внешнем scope, чтобы он пересобирался после
@@ -147,10 +142,7 @@ fun A4MainScreen(
 
     A4Theme {
         if (!hasUsableSubscription) {
-            SubscriptionEntry(
-                isLoading = state.isLoading,
-                onImportSubscription = onImportSubscription,
-            )
+            SubscriptionEntry(isLoading = state.isLoading, onUseFree = onUseFree)
         } else {
             A4AppHome(
                 mainViewModel = mainViewModel,
@@ -178,8 +170,12 @@ private fun A4AppHome(
     onOpenLogcat: () -> Unit,
 ) {
     val servers by mainViewModel.serversForGroup(selectedGroupId).collectAsStateWithLifecycle()
-    val speed by mainViewModel.proxySpeed.collectAsStateWithLifecycle()
+    // speed/session держим как State и отдаём вниз лямбдами: тогда тик раз в секунду
+    // рекомпозит только плитку статистики, а не весь дом с кнопкой и вкладками.
+    val speedState = mainViewModel.proxySpeed.collectAsStateWithLifecycle()
     val selectedServer = servers.firstOrNull { it.guid == selectedGuid } ?: servers.firstOrNull()
+    // Активная подписка для карточки трафика; пересчитывается после апдейта подписки.
+    val subscription = remember(selectedGuid, servers) { activeSubscription() }
     val isSelectedServerReady = selectedServer != null && selectedServer.guid == selectedGuid
     val canControlConnection = isRunning || isSelectedServerReady
     var tab by remember { mutableStateOf(A4Tab.Home) }
@@ -202,17 +198,17 @@ private fun A4AppHome(
     }
 
     // таймер сессии — от момента реального старта туннеля
-    var sessionSeconds by remember { mutableLongStateOf(0L) }
+    val sessionSeconds = remember { mutableLongStateOf(0L) }
     LaunchedEffect(conn) {
         if (conn == A4ConnState.Connected) {
             val stored = MmkvManager.decodeSettingsLong(AppConfig.A4_CONNECT_TS, 0L)
             val start = if (stored > 0L) stored else System.currentTimeMillis()
             while (true) {
-                sessionSeconds = ((System.currentTimeMillis() - start) / 1000L).coerceAtLeast(0L)
+                sessionSeconds.longValue = ((System.currentTimeMillis() - start) / 1000L).coerceAtLeast(0L)
                 delay(1000)
             }
         } else {
-            sessionSeconds = 0L
+            sessionSeconds.longValue = 0L
         }
     }
 
@@ -226,9 +222,9 @@ private fun A4AppHome(
     }
 
     Box(Modifier.fillMaxSize().background(A4Paper)) {
-        A4Backdrop()
+        A4Backdrop(conn == A4ConnState.Connected)
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            A4TopBar(conn)
+            A4TopBar()
             Box(Modifier.weight(1f)) {
                 AnimatedContent(
                     targetState = tab,
@@ -249,10 +245,11 @@ private fun A4AppHome(
                         A4Tab.Home -> HomeTab(
                             conn = conn,
                             connectionEnabled = canControlConnection,
-                            downBps = speed.first,
-                            upBps = speed.second,
-                            sessionSeconds = sessionSeconds,
+                            downBps = { speedState.value.first },
+                            upBps = { speedState.value.second },
+                            sessionSeconds = { sessionSeconds.longValue },
                             server = selectedServer,
+                            subscription = subscription,
                             onConnectionClick = {
                                 if (!isRunning) connecting = true
                                 onConnectionClick()
@@ -281,7 +278,7 @@ private fun A4AppHome(
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun A4TopBar(conn: A4ConnState) {
+private fun A4TopBar() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -305,41 +302,6 @@ private fun A4TopBar(conn: A4ConnState) {
             ),
             color = A4Ink,
         )
-        Spacer(Modifier.weight(1f))
-        ConnDot(conn)
-    }
-}
-
-/** Точка статуса: серая — офлайн, мигает — подключение, красная с пульсом — онлайн. */
-@Composable
-private fun ConnDot(conn: A4ConnState) {
-    val pulse by rememberInfiniteTransition(label = "dot").animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1600, easing = LinearEasing)),
-        label = "pulse",
-    )
-    val color by animateColorAsState(
-        targetValue = if (conn == A4ConnState.Disconnected) A4TextMuted else A4Red,
-        animationSpec = tween(300),
-        label = "dotColor",
-    )
-    Canvas(Modifier.size(22.dp)) {
-        val r = 4.dp.toPx()
-        if (conn == A4ConnState.Connected) {
-            drawCircle(
-                color = A4Red,
-                radius = r + pulse * 6.dp.toPx(),
-                alpha = (1f - pulse) * 0.45f,
-                style = Stroke(1.5f.dp.toPx()),
-            )
-        }
-        val blink = if (conn == A4ConnState.Connecting) {
-            0.35f + 0.65f * ((sin(pulse * 4f * PI).toFloat() + 1f) / 2f)
-        } else {
-            1f
-        }
-        drawCircle(color = color, radius = r, alpha = blink)
     }
 }
 
@@ -375,7 +337,7 @@ private fun A4BottomNav(current: A4Tab, onSelect: (A4Tab) -> Unit) {
                 // красная капсула-подсветка под активной вкладкой
                 Box(
                     Modifier
-                        .offset(x = x)
+                        .offset { IntOffset(x.roundToPx(), 0) }
                         .width(itemW)
                         .fillMaxHeight()
                         .padding(horizontal = 4.dp)
@@ -443,9 +405,11 @@ private fun TabIcon(tab: A4Tab, color: Color) {
 /**
  * Спокойный «журнальный» фон: контур круга, сетка точек, вращающийся
  * треугольник и тонкая линия — всё еле заметное и медленно дрейфует.
+ * Сетка точек в правом верхнем углу — индикатор VPN: серая, когда выключен,
+ * красная, когда включён.
  */
 @Composable
-private fun A4Backdrop() {
+internal fun A4Backdrop(active: Boolean = false) {
     val infinite = rememberInfiniteTransition(label = "backdrop")
     val t by infinite.animateFloat(
         initialValue = 0f,
@@ -458,6 +422,18 @@ private fun A4Backdrop() {
         targetValue = 360f,
         animationSpec = infiniteRepeatable(tween(90000, easing = LinearEasing)),
         label = "rotation",
+    )
+    // плавный переход цвета точек серый↔красный при смене статуса VPN
+    val warm by animateFloatAsState(
+        targetValue = if (active) 1f else 0f,
+        animationSpec = tween(400),
+        label = "dotsWarm",
+    )
+    val dotPulse by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1800, easing = LinearEasing)),
+        label = "dotsPulse",
     )
     Canvas(Modifier.fillMaxSize()) {
         val w = size.width
@@ -473,13 +449,17 @@ private fun A4Backdrop() {
         )
 
         val step = 18.dp.toPx()
+        val dotColor = lerp(A4TextMuted, A4Red, warm)
+        val dotDrift = if (active) drift * 6f else 0f
         for (i in 0..2) {
             for (j in 0..2) {
+                val wave = (sin(dotPulse * 2f * PI - (i + j) * 0.8f).toFloat() + 1f) / 2f
+                val pulse = if (active) wave else 0f
                 drawCircle(
-                    color = A4Red,
-                    radius = 2.5f.dp.toPx(),
-                    center = Offset(w * 0.78f + i * step, h * 0.10f + j * step + drift * 6f),
-                    alpha = 0.10f,
+                    color = dotColor,
+                    radius = (2.5f + pulse * 1.2f).dp.toPx(),
+                    center = Offset(w * 0.78f + i * step, h * 0.10f + j * step + dotDrift),
+                    alpha = 0.28f + pulse * 0.52f,
                 )
             }
         }
@@ -513,10 +493,11 @@ private fun A4Backdrop() {
 private fun HomeTab(
     conn: A4ConnState,
     connectionEnabled: Boolean,
-    downBps: Long,
-    upBps: Long,
-    sessionSeconds: Long,
+    downBps: () -> Long,
+    upBps: () -> Long,
+    sessionSeconds: () -> Long,
     server: ServersCache?,
+    subscription: SubscriptionItem?,
     onConnectionClick: () -> Unit,
     onOpenServers: () -> Unit,
 ) {
@@ -580,7 +561,74 @@ private fun HomeTab(
             onClick = onOpenServers,
         )
 
+        if (subscription != null && subscription.hasTrafficInfo) {
+            Spacer(Modifier.height(12.dp))
+            TrafficCard(subscription)
+        }
+
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/**
+ * Минимальная карточка остатка трафика на Главной:
+ *   339 ГБ  осталось                 37 дней ⏳
+ *   ███████░░░░░░░░░░░░░░░░░░░░  15%
+ * При безлимите — просто «Безлимит» без полосы.
+ */
+@Composable
+private fun TrafficCard(sub: SubscriptionItem) {
+    val days = sub.daysLeft()
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(A4PaperCard)
+            .border(1.dp, A4Border, RoundedCornerShape(12.dp))
+            .padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (sub.isUnlimited) {
+                Text("Безлимит", style = MaterialTheme.typography.titleMedium, color = A4Ink)
+            } else {
+                val low = sub.usedFraction() >= 0.9f
+                Text(
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(color = if (low) A4Red else A4Ink)) {
+                            append("${formatGib(sub.remainingBytes())} ГБ")
+                        }
+                        withStyle(SpanStyle(color = A4TextMuted)) { append("  осталось") }
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            if (days != null) {
+                val urgent = days < 7
+                val tint = if (urgent) A4Red else A4TextMuted
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "$days ${pluralDays(days)}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = tint,
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    ClockIcon(color = tint)
+                }
+            }
+        }
+        if (!sub.isUnlimited) {
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                A4TrafficBar(sub.usedFraction(), Modifier.weight(1f))
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "${(sub.usedFraction() * 100).roundToInt()}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = A4TextMuted,
+                )
+            }
+        }
     }
 }
 
@@ -674,10 +722,10 @@ private fun sessionParts(sec: Long): Pair<String, String> = when {
 }
 
 @Composable
-private fun StatsRow(downBps: Long, upBps: Long, sessionSeconds: Long) {
-    val (downValue, downUnit) = speedParts(downBps)
-    val (upValue, upUnit) = speedParts(upBps)
-    val (sessionValue, sessionUnit) = sessionParts(sessionSeconds)
+private fun StatsRow(downBps: () -> Long, upBps: () -> Long, sessionSeconds: () -> Long) {
+    val (downValue, downUnit) = speedParts(downBps())
+    val (upValue, upUnit) = speedParts(upBps())
+    val (sessionValue, sessionUnit) = sessionParts(sessionSeconds())
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         StatTile("ЗАГРУЗКА", downValue, downUnit, Modifier.weight(1f))
         StatTile("ОТДАЧА", upValue, upUnit, Modifier.weight(1f))
@@ -969,40 +1017,18 @@ private fun CheckMark() {
 }
 
 // ---------------------------------------------------------------------------
-// Первый запуск: ввод ключа подписки
+// Первый запуск: вход через Telegram-бота
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun SubscriptionEntry(
-    isLoading: Boolean,
-    onImportSubscription: (String, (Boolean) -> Unit) -> Unit,
-) {
+private fun SubscriptionEntry(isLoading: Boolean, onUseFree: () -> Unit) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
-    var url by remember { mutableStateOf("") }
-    var isSubmitting by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    fun submit(value: String) {
-        val subscriptionUrl = value.trim()
-        if (isSubmitting || isLoading) return
-        if (subscriptionUrl.isBlank()) {
-            errorMessage = "Вставь ключ подписки"
-            return
-        }
-
-        errorMessage = null
-        isSubmitting = true
+    fun openBot() {
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-        onImportSubscription(subscriptionUrl) { imported ->
-            if (!imported) {
-                isSubmitting = false
-                errorMessage = "Не получилось загрузить подписку. Проверь ключ и попробуй ещё раз."
-            }
-        }
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AppConfig.TELEGRAM_BOT_URL)))
     }
-
-    val controlsEnabled = !isSubmitting && !isLoading
 
     Box(
         Modifier
@@ -1015,7 +1041,6 @@ private fun SubscriptionEntry(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .imePadding()
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -1047,13 +1072,13 @@ private fun SubscriptionEntry(
                     A4SectionLabel("ПОДКЛЮЧЕНИЕ")
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Вставь ключ подписки",
+                        "Вход через Telegram",
                         style = MaterialTheme.typography.headlineMedium,
                         color = A4Ink,
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Ключ приходит в Telegram-боте после оформления. Скопируй его и вставь сюда.",
+                        "Открой бота и нажми «Подключить» — приложение настроится само.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = A4TextMuted,
                     )
@@ -1061,87 +1086,54 @@ private fun SubscriptionEntry(
             }
             Spacer(Modifier.height(18.dp))
             A4StaggerIn(3) {
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = url,
-                        onValueChange = {
-                            url = it
-                            errorMessage = null
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        enabled = controlsEnabled,
-                        isError = errorMessage != null,
-                        placeholder = {
-                            Text("https://…", style = MaterialTheme.typography.bodyMedium, color = A4TextMuted)
-                        },
-                        supportingText = errorMessage?.let { message ->
-                            { Text(message, style = MaterialTheme.typography.bodySmall, color = A4Red) }
-                        },
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = A4Ink),
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Uri,
-                            imeAction = ImeAction.Done,
-                        ),
-                        keyboardActions = KeyboardActions(onDone = { submit(url) }),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = A4Ink,
-                            unfocusedBorderColor = A4Border,
-                            errorBorderColor = A4Red,
-                            cursorColor = A4Red,
-                            focusedTextColor = A4Ink,
-                            unfocusedTextColor = A4Ink,
-                            focusedContainerColor = A4PaperCard,
-                            unfocusedContainerColor = A4PaperCard,
-                            errorContainerColor = A4PaperCard,
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .springClick(scale = 0.98f) {
-                                if (controlsEnabled) {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val text = clipboard.primaryClip
-                                        ?.takeIf { it.itemCount > 0 }
-                                        ?.getItemAt(0)
-                                        ?.coerceToText(context)
-                                        ?.toString()
-                                        .orEmpty()
-                                    if (text.isNotBlank()) {
-                                        haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                                        url = text
-                                        errorMessage = null
-                                    }
-                                }
-                            }
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(A4Ink)
-                            .padding(vertical = 15.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            "ВСТАВИТЬ ИЗ БУФЕРА",
-                            style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp, letterSpacing = 1.sp),
-                            color = Color.White,
-                        )
-                    }
-
-                    SubmitButton(
-                        busy = isSubmitting || isLoading,
-                        onClick = { submit(url) },
-                    )
-                }
+                OpenBotButton(busy = isLoading, onClick = { openBot() })
+            }
+            Spacer(Modifier.height(12.dp))
+            A4StaggerIn(4) {
+                FreeEntryButton(
+                    busy = isLoading,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onUseFree()
+                    },
+                )
             }
             Spacer(Modifier.height(32.dp))
         }
     }
 }
 
+/**
+ * Вход без ключа: подключает бесплатный профиль — одна локация, через которую
+ * ходит только Telegram. Подписку с ключом можно добавить позже, из настроек.
+ */
 @Composable
-private fun SubmitButton(busy: Boolean, onClick: () -> Unit) {
+private fun FreeEntryButton(busy: Boolean, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .springClick(scale = 0.97f) { if (!busy) onClick() }
+            .clip(RoundedCornerShape(10.dp))
+            .border(1.dp, A4Border, RoundedCornerShape(10.dp))
+            .padding(vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            "ВОЙТИ БЕЗ КЛЮЧА",
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, letterSpacing = 1.sp),
+            color = A4Ink,
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            "бесплатно, работает только Telegram",
+            style = MaterialTheme.typography.bodySmall,
+            color = A4TextMuted,
+        )
+    }
+}
+
+@Composable
+private fun OpenBotButton(busy: Boolean, onClick: () -> Unit) {
     val arrowNudge by rememberInfiniteTransition(label = "submit").animateFloat(
         initialValue = 0f,
         targetValue = 5f,
@@ -1166,14 +1158,14 @@ private fun SubmitButton(busy: Boolean, onClick: () -> Unit) {
         ) { isBusy ->
             if (isBusy) {
                 Text(
-                    "ПРОВЕРЯЕМ КЛЮЧ…",
+                    "ПОДКЛЮЧАЕМ…",
                     style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, letterSpacing = 1.sp),
                     color = Color.White,
                 )
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "ПОДКЛЮЧИТЬ",
+                        "ОТКРЫТЬ TELEGRAM",
                         style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, letterSpacing = 1.sp),
                         color = Color.White,
                     )

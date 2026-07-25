@@ -143,7 +143,24 @@ object HttpUtil {
      * @throws IOException If an I/O error occurs.
      */
     @Throws(IOException::class)
-    fun getUrlContentWithUserAgent(request: UrlContentRequest): String {
+    fun getUrlContentWithUserAgent(request: UrlContentRequest): String =
+        getUrlContentWithHeaders(request).first
+
+    /** Заголовки подписки, которые нас интересуют (метаданные плана/трафика). */
+    private val SUBSCRIPTION_HEADERS =
+        listOf(
+            "subscription-userinfo",
+            "profile-title",
+            "profile-update-interval",
+            "subscription-refill-date",
+        )
+
+    /**
+     * То же, что [getUrlContentWithUserAgent], но возвращает и выбранные заголовки ответа
+     * (нужно для лимитов трафика подписки). Ключи — из [SUBSCRIPTION_HEADERS], в нижнем регистре.
+     */
+    @Throws(IOException::class)
+    fun getUrlContentWithHeaders(request: UrlContentRequest): Pair<String, Map<String, String>> {
         var currentUrl = request.url
         var redirects = 0
         val maxRedirects = 3
@@ -152,7 +169,8 @@ object HttpUtil {
             if (currentUrl == null) continue
             val client = buildOkHttpClient(request.timeout, request.httpPort, request.proxyUsername, request.proxyPassword, followRedirects = false)
             val finalUserAgent = if (request.userAgent.isNullOrBlank()) {
-                "v2rayNG/${BuildConfig.VERSION_NAME}"
+                // a4vpn: панель определяет клиента по User-Agent
+                "a4vpn/${BuildConfig.VERSION_NAME}"
             } else {
                 request.userAgent
             }
@@ -183,7 +201,11 @@ object HttpUtil {
                     }
 
                     response.isSuccessful -> {
-                        return response.body?.string() ?: ""
+                        val body = response.body?.string() ?: ""
+                        val headers = SUBSCRIPTION_HEADERS
+                            .mapNotNull { name -> response.header(name)?.let { name to it } }
+                            .toMap()
+                        return body to headers
                     }
 
                     else -> {
