@@ -31,6 +31,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -80,6 +81,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -88,7 +90,9 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
@@ -112,6 +116,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
@@ -221,55 +226,69 @@ private fun A4AppHome(
         onSelectServer(guid)
     }
 
+    val glassBackdrop = rememberA4GlassBackdrop()
     Box(Modifier.fillMaxSize().background(A4Paper)) {
-        A4Backdrop(conn == A4ConnState.Connected)
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            A4TopBar()
-            Box(Modifier.weight(1f)) {
-                AnimatedContent(
-                    targetState = tab,
-                    transitionSpec = {
-                        val dir = if (targetState.ordinal > initialState.ordinal) 1 else -1
-                        (slideInHorizontally(
-                            initialOffsetX = { dir * it / 5 },
-                            animationSpec = tween(300),
-                        ) + fadeIn(tween(260))) togetherWith
-                            (slideOutHorizontally(
-                                targetOffsetX = { -dir * it / 5 },
-                                animationSpec = tween(200),
-                            ) + fadeOut(tween(150)))
-                    },
-                    label = "tabs",
-                ) { t ->
-                    when (t) {
-                        A4Tab.Home -> HomeTab(
-                            conn = conn,
-                            connectionEnabled = canControlConnection,
-                            downBps = { speedState.value.first },
-                            upBps = { speedState.value.second },
-                            sessionSeconds = { sessionSeconds.longValue },
-                            server = selectedServer,
-                            subscription = subscription,
-                            onConnectionClick = {
-                                if (!isRunning) connecting = true
-                                onConnectionClick()
-                            },
-                            onOpenServers = { tab = A4Tab.Servers },
-                        )
-                        A4Tab.Servers -> ServersTab(
-                            mainViewModel = mainViewModel,
-                            servers = servers,
-                            selectedGuid = selectedGuid,
-                            isTesting = isTesting,
-                            onSelectServer = selectServer,
-                            onTestPing = { mainViewModel.testAllRealPing() },
-                        )
-                        A4Tab.Settings -> A4SettingsTab(onOpenLogcat = onOpenLogcat)
+        // В источник попадает и фон, и содержимое вкладок. Нижняя навигация
+        // рисуется снаружи: иначе стекло размывало бы само себя.
+        Box(Modifier.fillMaxSize().a4GlassBackdropSource(glassBackdrop)) {
+            A4Backdrop(conn == A4ConnState.Connected)
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding(),
+            ) {
+                A4TopBar()
+                Box(Modifier.weight(1f)) {
+                    AnimatedContent(
+                        targetState = tab,
+                        transitionSpec = {
+                            val dir = if (targetState.ordinal > initialState.ordinal) 1 else -1
+                            (slideInHorizontally(
+                                initialOffsetX = { dir * it / 5 },
+                                animationSpec = tween(300),
+                            ) + fadeIn(tween(260))) togetherWith
+                                (slideOutHorizontally(
+                                    targetOffsetX = { -dir * it / 5 },
+                                    animationSpec = tween(200),
+                                ) + fadeOut(tween(150)))
+                        },
+                        label = "tabs",
+                    ) { t ->
+                        when (t) {
+                            A4Tab.Home -> HomeTab(
+                                conn = conn,
+                                connectionEnabled = canControlConnection,
+                                downBps = { speedState.value.first },
+                                upBps = { speedState.value.second },
+                                sessionSeconds = { sessionSeconds.longValue },
+                                server = selectedServer,
+                                subscription = subscription,
+                                onConnectionClick = {
+                                    if (!isRunning) connecting = true
+                                    onConnectionClick()
+                                },
+                                onOpenServers = { tab = A4Tab.Servers },
+                            )
+                            A4Tab.Servers -> ServersTab(
+                                mainViewModel = mainViewModel,
+                                servers = servers,
+                                selectedGuid = selectedGuid,
+                                isTesting = isTesting,
+                                onSelectServer = selectServer,
+                                onTestPing = { mainViewModel.testAllRealPing() },
+                            )
+                            A4Tab.Settings -> A4SettingsTab(onOpenLogcat = onOpenLogcat)
+                        }
                     }
                 }
             }
-            A4BottomNav(tab) { tab = it }
         }
+        A4BottomNav(
+            current = tab,
+            backdrop = glassBackdrop,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            onSelect = { tab = it },
+        )
     }
 }
 
@@ -306,47 +325,173 @@ private fun A4TopBar() {
 }
 
 @Composable
-private fun A4BottomNav(current: A4Tab, onSelect: (A4Tab) -> Unit) {
+private fun A4BottomNav(
+    current: A4Tab,
+    backdrop: A4GlassBackdrop,
+    modifier: Modifier = Modifier,
+    onSelect: (A4Tab) -> Unit,
+) {
     val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val lensX = remember { Animatable(0f) }
+    var lensInMotion by remember { mutableStateOf(false) }
+    var lensStretch by remember { mutableStateOf(1f) }
+    var lastFingerX by remember { mutableStateOf<Float?>(null) }
+    var dragTarget by remember { mutableStateOf<A4Tab?>(null) }
     Box(
-        Modifier
+        modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 12.dp),
     ) {
-        // плавающая «таблетка»-контейнер
+        // Плавающая стеклянная капсула из ветки liquid-glass.
         Box(
             Modifier
                 .fillMaxWidth()
-                .shadow(12.dp, RoundedCornerShape(24.dp), clip = false)
-                .clip(RoundedCornerShape(24.dp))
-                .background(A4PaperCard)
-                .border(1.dp, A4Border, RoundedCornerShape(24.dp))
+                .a4LiquidGlass(CircleShape, backdrop, milk = 0.82f, elevation = 10.dp)
                 .padding(6.dp),
         ) {
-            BoxWithConstraints(Modifier.fillMaxWidth().height(60.dp)) {
+            BoxWithConstraints(Modifier.fillMaxWidth().height(58.dp)) {
                 val itemW = maxWidth / A4Tab.entries.size
-                val x by animateDpAsState(
-                    targetValue = itemW * current.ordinal,
+                val density = LocalDensity.current
+                val itemWPx = with(density) { itemW.toPx() }
+                val settledX by animateDpAsState(
+                    targetValue = itemW * (dragTarget ?: current).ordinal,
                     animationSpec = spring(
                         dampingRatio = Spring.DampingRatioMediumBouncy,
                         stiffness = Spring.StiffnessMediumLow,
                     ),
                     label = "pill",
                 )
-                // красная капсула-подсветка под активной вкладкой
+                fun tabAt(x: Float): A4Tab = A4Tab.entries[
+                    (x / itemWPx).toInt().coerceIn(0, A4Tab.entries.lastIndex)
+                ]
+                val lensOffset = if (lensInMotion) lensX.value else with(density) { settledX.toPx() }
+                val lensScaleX by animateFloatAsState(
+                    targetValue = lensStretch,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+                    label = "lensStretchX",
+                )
+                val lensScaleY by animateFloatAsState(
+                    targetValue = 2f - lensStretch,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+                    label = "lensStretchY",
+                )
+                // Линза подсвечивает активную вкладку поверх общего стекла.
                 Box(
                     Modifier
-                        .offset { IntOffset(x.roundToPx(), 0) }
+                        .offset {
+                            IntOffset(
+                                lensOffset.roundToInt(),
+                                0,
+                            )
+                        }
                         .width(itemW)
                         .fillMaxHeight()
-                        .padding(horizontal = 4.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(A4Red.copy(alpha = 0.12f)),
+                        .graphicsLayer {
+                            scaleX = lensScaleX
+                            scaleY = lensScaleY
+                        }
+                        .padding(horizontal = 3.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color.White.copy(alpha = 0.92f),
+                                    Color.White.copy(alpha = 0.55f),
+                                ),
+                            ),
+                        )
+                        .border(1.dp, Color.White, CircleShape),
                 )
-                Row(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .fillMaxSize()
+                        .pointerInput(itemWPx, current) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { position ->
+                                    dragTarget = tabAt(position.x)
+                                    lensInMotion = true
+                                    lastFingerX = position.x
+                                    val desiredX = (position.x - itemWPx / 2f)
+                                        .coerceIn(0f, size.width - itemWPx)
+                                    scope.launch {
+                                        lensX.snapTo(current.ordinal * itemWPx)
+                                        lensX.animateTo(
+                                            desiredX,
+                                            spring(
+                                                dampingRatio = 0.82f,
+                                                stiffness = Spring.StiffnessLow,
+                                            ),
+                                        )
+                                    }
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                },
+                                onDrag = { change, _ ->
+                                    val target = tabAt(change.position.x)
+                                    if (target != dragTarget) {
+                                        dragTarget = target
+                                        haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                                    }
+                                    val speed = abs(change.position.x - (lastFingerX ?: change.position.x))
+                                    lensStretch = (1f + speed / itemWPx * 0.30f).coerceAtMost(1.14f)
+                                    lastFingerX = change.position.x
+                                    val desiredX = (change.position.x - itemWPx / 2f)
+                                        .coerceIn(0f, size.width - itemWPx)
+                                    scope.launch {
+                                        lensX.animateTo(
+                                            desiredX,
+                                            spring(
+                                                dampingRatio = 0.78f,
+                                                stiffness = Spring.StiffnessLow,
+                                            ),
+                                        )
+                                    }
+                                    change.consume()
+                                },
+                                onDragEnd = {
+                                    val target = dragTarget ?: current
+                                    lensStretch = 1f
+                                    lastFingerX = null
+                                    scope.launch {
+                                        lensX.animateTo(
+                                            target.ordinal * itemWPx,
+                                            spring(
+                                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                stiffness = Spring.StiffnessLow,
+                                            ),
+                                        )
+                                        if (target != current) onSelect(target)
+                                        dragTarget = null
+                                        lensInMotion = false
+                                    }
+                                },
+                                onDragCancel = {
+                                    lensStretch = 1f
+                                    lastFingerX = null
+                                    scope.launch {
+                                        lensX.animateTo(
+                                            current.ordinal * itemWPx,
+                                            spring(
+                                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                stiffness = Spring.StiffnessLow,
+                                            ),
+                                        )
+                                        dragTarget = null
+                                        lensInMotion = false
+                                    }
+                                },
+                            )
+                        },
+                ) {
                     A4Tab.entries.forEach { t ->
-                        val active = t == current
+                        val active = t == (dragTarget ?: current)
                         val color by animateColorAsState(
                             targetValue = if (active) A4Red else A4TextMuted,
                             animationSpec = tween(220),
