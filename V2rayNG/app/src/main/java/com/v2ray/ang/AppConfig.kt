@@ -58,6 +58,8 @@ object AppConfig {
     const val APP_LINK_SUB_PATH = "/app/sub/"
     const val TELEGRAM_BOT_URL = "https://t.me/a4securebot"
     const val SUB_KEY_HOST = "sub.a4secure.xyz"
+    const val APP_UPDATE_MANIFEST_URL = "https://app.a4vpn.net/update.json"
+    const val APP_UPDATE_HOST = "app.a4vpn.net"
 
     // Temporary: new installations must start only with a subscription supplied
     // by the user. Keep the URL constant to recognize legacy saved profiles.

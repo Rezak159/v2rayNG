@@ -5,24 +5,31 @@ import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Base64
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.core.LauncherManager
 import com.v2ray.ang.dto.entities.ProfileItem
+import com.v2ray.ang.dto.AppUpdate
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.PermissionType
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.AngConfigManager
+import com.v2ray.ang.handler.AppUpdateManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.handler.SettingsManager
@@ -54,6 +61,7 @@ import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 class MainActivity : HelperBaseComponentActivity() {
 
@@ -64,6 +72,9 @@ class MainActivity : HelperBaseComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels {
         MainViewModel.Factory(application, MainRepository(application as AngApplication))
     }
+
+    private var appUpdate by mutableStateOf<AppUpdate?>(null)
+    private var isDownloadingUpdate by mutableStateOf(false)
 
     private val requestVpnPermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -103,6 +114,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
         importFromIntent(intent)
+        checkForAppUpdate()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -121,6 +133,50 @@ class MainActivity : HelperBaseComponentActivity() {
             onOpenLogcat = { navigateTo(MainDestination.Logcat) },
             onOpenPerAppProxy = { navigateTo(MainDestination.PerAppProxy) },
             onImportSubscription = ::importSubscriptionFromEntry,
+            appUpdate = appUpdate,
+            isDownloadingUpdate = isDownloadingUpdate,
+            onInstallUpdate = ::downloadAndInstallUpdate,
+        )
+    }
+
+    private fun checkForAppUpdate() {
+        lifecycleScope.launch {
+            appUpdate = AppUpdateManager.checkForUpdate(this@MainActivity)
+        }
+    }
+
+    private fun downloadAndInstallUpdate() {
+        val update = appUpdate ?: return
+        if (isDownloadingUpdate) return
+
+        isDownloadingUpdate = true
+        lifecycleScope.launch {
+            val apk = AppUpdateManager.download(this@MainActivity, update)
+            isDownloadingUpdate = false
+            if (apk == null) {
+                toastError(R.string.toast_failure)
+                return@launch
+            }
+            requestApkInstallation(apk)
+        }
+    }
+
+    private fun requestApkInstallation(apk: File) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName"),
+                ),
+            )
+            return
+        }
+
+        val uri = FileProvider.getUriForFile(this, "$packageName.cache", apk)
+        startActivity(
+            Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
         )
     }
 

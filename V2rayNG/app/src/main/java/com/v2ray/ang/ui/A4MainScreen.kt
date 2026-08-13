@@ -131,6 +131,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
+import com.v2ray.ang.dto.AppUpdate
 import com.v2ray.ang.dto.entities.ServersCache
 import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.handler.AngConfigManager
@@ -173,6 +174,9 @@ fun A4MainScreen(
     onOpenLogcat: () -> Unit,
     onOpenPerAppProxy: () -> Unit,
     onImportSubscription: (String) -> Unit,
+    appUpdate: AppUpdate?,
+    isDownloadingUpdate: Boolean,
+    onInstallUpdate: () -> Unit,
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
     val isLoading by mainViewModel.isLoading.collectAsStateWithLifecycle()
@@ -186,24 +190,83 @@ fun A4MainScreen(
     }
 
     A4Theme {
-        if (!hasUsableSubscription) {
-            SubscriptionEntry(
-                isLoading = isLoading,
-                onImportSubscription = onImportSubscription,
-            )
-        } else {
-            A4AppHome(
-                mainViewModel = mainViewModel,
-                isRunning = state.isRunning,
-                isTesting = state.isTesting,
-                selectedGroupId = state.selectedGroupId,
-                selectedGuid = state.selectedGuid,
-                onConnectionClick = onConnectionClick,
-                onSelectServer = onSelectServer,
-                onOpenLogcat = onOpenLogcat,
-                onOpenPerAppProxy = onOpenPerAppProxy,
-            )
+        Box(Modifier.fillMaxSize()) {
+            if (!hasUsableSubscription) {
+                SubscriptionEntry(
+                    isLoading = isLoading,
+                    onImportSubscription = onImportSubscription,
+                )
+            } else {
+                A4AppHome(
+                    mainViewModel = mainViewModel,
+                    isRunning = state.isRunning,
+                    isTesting = state.isTesting,
+                    selectedGroupId = state.selectedGroupId,
+                    selectedGuid = state.selectedGuid,
+                    onConnectionClick = onConnectionClick,
+                    onSelectServer = onSelectServer,
+                    onOpenLogcat = onOpenLogcat,
+                    onOpenPerAppProxy = onOpenPerAppProxy,
+                )
+            }
+            appUpdate?.let { update ->
+                A4UpdateBanner(
+                    update = update,
+                    isDownloading = isDownloadingUpdate,
+                    onClick = onInstallUpdate,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun A4UpdateBanner(
+    update: AppUpdate,
+    isDownloading: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(A4Ink)
+            .clickable(enabled = !isDownloading, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.ArrowDownward,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                if (isDownloading) "Скачиваем обновление…" else "Доступно обновление ${update.versionName}",
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                color = Color.White,
+            )
+            if (!isDownloading && update.notes.isNotBlank()) {
+                Text(
+                    update.notes,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.72f),
+                )
+            }
+        }
+        Text(
+            if (isDownloading) "…" else "ОБНОВИТЬ",
+            style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 0.5.sp),
+            color = A4Red,
+        )
     }
 }
 
