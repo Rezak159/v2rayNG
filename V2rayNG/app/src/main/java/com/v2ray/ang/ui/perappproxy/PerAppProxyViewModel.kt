@@ -41,8 +41,9 @@ class PerAppProxyViewModel(application: Application) : BaseViewModel(application
     )
     val perAppProxyEnabled: StateFlow<Boolean> = _perAppProxyEnabled.asStateFlow()
 
+    // a4vpn: режим обхода — единственный доступный режим, выбора больше нет.
     private val _bypassApps = MutableStateFlow(
-        MmkvManager.decodeSettingsBool(AppConfig.PREF_BYPASS_APPS, false)
+        MmkvManager.decodeSettingsBool(AppConfig.PREF_BYPASS_APPS, true)
     )
     val bypassApps: StateFlow<Boolean> = _bypassApps.asStateFlow()
 
@@ -79,13 +80,6 @@ class PerAppProxyViewModel(application: Application) : BaseViewModel(application
         if (_perAppProxyEnabled.value != enabled) {
             _perAppProxyEnabled.value = enabled
             MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, enabled)
-        }
-    }
-
-    fun setBypassAppsEnabled(enabled: Boolean) {
-        if (_bypassApps.value != enabled) {
-            _bypassApps.value = enabled
-            MmkvManager.encodeSettings(AppConfig.PREF_BYPASS_APPS, enabled)
         }
     }
 

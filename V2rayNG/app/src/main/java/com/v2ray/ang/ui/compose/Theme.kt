@@ -135,12 +135,11 @@ object ThemeManager {
 
 @Composable
 fun resolveDarkTheme(): Boolean {
-    val mode by ThemeManager.themeMode.collectAsState()
-    return when (mode) {
-        "1" -> false
-        "2" -> true
-        else -> isSystemInDarkTheme()
-    }
+    // a4vpn: приложение всегда светлое — тёмной темы в бренде нет, и в
+    // A4-настройках нет переключателя для неё, так что следование системной
+    // теме (апстримный дефолт "0") просто рандомно красило старые экраны в
+    // тёмный на устройствах с системным dark mode.
+    return false
 }
 
 val LocalDarkTheme = compositionLocalOf { false }

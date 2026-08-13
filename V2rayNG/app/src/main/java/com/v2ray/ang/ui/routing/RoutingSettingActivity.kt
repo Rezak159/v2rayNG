@@ -77,12 +77,10 @@ private enum class RoutingMenuAction(@StringRes val labelRes: Int) {
     ExportClipboard(R.string.routing_settings_export_rulesets_to_clipboard)
 }
 
+// a4vpn: единственный пресет в UI — принудительный роутинг+DNS RoscomVPN,
+// остальные пресеты апстрима (Китай/Иран и т.д.) тут не нужны.
 private enum class RoutingPreset(val type: RoutingType, @StringRes val labelRes: Int) {
-    ChinaWhitelist(RoutingType.WHITE, R.string.routing_preset_china_whitelist),
-    ChinaBlacklist(RoutingType.BLACK, R.string.routing_preset_china_blacklist),
-    Global(RoutingType.GLOBAL, R.string.routing_preset_global),
-    IranWhitelist(RoutingType.WHITE_IRAN, R.string.routing_preset_iran_whitelist),
-    RussiaWhitelist(RoutingType.WHITE_RUSSIA, R.string.routing_preset_russia_whitelist)
+    Roscom(RoutingType.ROSCOM, R.string.routing_preset_roscom_russia),
 }
 
 class RoutingSettingActivity : HelperBaseComponentActivity() {

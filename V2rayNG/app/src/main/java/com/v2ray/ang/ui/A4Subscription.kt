@@ -69,6 +69,16 @@ internal fun SubscriptionItem.expireDateText(): String? {
     return SimpleDateFormat("d MMMM yyyy", Locale.forLanguageTag("ru")).format(Date(expire * 1000L))
 }
 
+/** Короткая метка срока для карточек трафика: дни, либо год окончания, если их больше 365. */
+internal fun SubscriptionItem.expiryShortLabel(): String? {
+    val days = daysLeft() ?: return null
+    if (days > 365) {
+        val year = SimpleDateFormat("yyyy", Locale.forLanguageTag("ru")).format(Date(expire * 1000L))
+        return "до $year"
+    }
+    return "$days ${pluralDays(days)}"
+}
+
 /** Дата обнуления счётчика трафика, либо null если её нет или трафик безлимитный. */
 internal fun SubscriptionItem.refillDateText(): String? {
     if (refill <= 0 || isUnlimited) return null
@@ -81,7 +91,7 @@ internal fun SubscriptionItem.lastUpdatedText(): String? {
     val ru = Locale.forLanguageTag("ru")
     val moment = Date(lastUpdated)
     val today = SimpleDateFormat("yyyyMMdd", ru).let { it.format(moment) == it.format(Date()) }
-    val pattern = if (today) "'сегодня в' HH:mm" else "d MMMM 'в' HH:mm"
+    val pattern = if (today) "HH:mm" else "d MMM, HH:mm"
     return SimpleDateFormat(pattern, ru).format(moment)
 }
 
@@ -106,7 +116,7 @@ internal fun pluralDays(n: Long): String {
 internal fun A4TrafficBar(fraction: Float, modifier: Modifier = Modifier) {
     Box(
         modifier
-            .height(7.dp)
+            .height(8.dp)
             .clip(RoundedCornerShape(4.dp))
             .background(A4Border),
     ) {

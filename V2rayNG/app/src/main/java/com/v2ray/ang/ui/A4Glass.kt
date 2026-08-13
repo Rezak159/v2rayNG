@@ -82,6 +82,7 @@ internal fun Modifier.a4LiquidGlass(
     backdrop: A4GlassBackdrop,
     milk: Float,
     elevation: Dp,
+    opaque: Boolean = false,
 ): Modifier = composed {
     var position by remember { mutableStateOf(Offset.Zero) }
     val locate = Modifier.onGloballyPositioned { coords ->
@@ -128,6 +129,22 @@ internal fun Modifier.a4LiquidGlass(
         .then(locate)
         .clip(shape)
         .drawBehind {
+            // Тумблер «Жидкое стекло» в настройках: выключен — рисуем сплошную
+            // непрозрачную капсулу без блюра фона, вместо обычного стеклянного
+            // материала ниже.
+            if (opaque) {
+                drawRect(A4PaperCard)
+                val lip = 7.dp.toPx()
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color.White.copy(alpha = 0.5f), Color.Transparent),
+                        startY = 0f,
+                        endY = lip,
+                    ),
+                    size = Size(size.width, lip),
+                )
+                return@drawBehind
+            }
             backdrop.version
             backdrop.blurred?.let { layer ->
                 translate(-position.x, -position.y) { drawLayer(layer) }

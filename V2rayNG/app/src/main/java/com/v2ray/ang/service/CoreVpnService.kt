@@ -279,7 +279,7 @@ class CoreVpnService : VpnService(), ServiceControl {
             return
         }
 
-        val bypassApps = MmkvManager.decodeSettingsBool(AppConfig.PREF_BYPASS_APPS)
+        val bypassApps = MmkvManager.decodeSettingsBool(AppConfig.PREF_BYPASS_APPS, true)
         // Handle the VPN service's own package according to the mode
         if (bypassApps) apps.add(selfPackageName) else apps.remove(selfPackageName)
 

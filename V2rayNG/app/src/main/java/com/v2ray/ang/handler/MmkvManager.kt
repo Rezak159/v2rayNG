@@ -759,6 +759,14 @@ object MmkvManager {
 
     //region Compose helpers for Settings
 
+    // Shared per-key state so every composable observing the same pref key sees
+    // the same MutableState instance — a change made on one screen (e.g. the
+    // Liquid Glass toggle in settings) is reflected immediately everywhere else
+    // that reads it (e.g. the bottom nav), instead of only after that other
+    // composable is freshly recreated (previously required an app restart).
+    private val mmkvStringStates = mutableMapOf<String, MutableState<String>>()
+    private val mmkvBoolStates = mutableMapOf<String, MutableState<Boolean>>()
+
     /**
      * MMKV-backed String state, auto-persists and notifies on change.
      */
@@ -768,7 +776,9 @@ object MmkvManager {
         default: String = ""
     ): MutableState<String> {
         val state = remember(key) {
-            mutableStateOf(decodeSettingsString(key, default) ?: default)
+            mmkvStringStates.getOrPut(key) {
+                mutableStateOf(decodeSettingsString(key, default) ?: default)
+            }
         }
 
         LaunchedEffect(key) {
@@ -792,7 +802,9 @@ object MmkvManager {
         default: Boolean = false
     ): MutableState<Boolean> {
         val state = remember(key) {
-            mutableStateOf(decodeSettingsBool(key, default))
+            mmkvBoolStates.getOrPut(key) {
+                mutableStateOf(decodeSettingsBool(key, default))
+            }
         }
 
         LaunchedEffect(key) {

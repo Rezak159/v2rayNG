@@ -57,6 +57,7 @@ object AppConfig {
     const val APP_LINK_HOST = "import.a4secure.xyz"
     const val APP_LINK_SUB_PATH = "/app/sub/"
     const val TELEGRAM_BOT_URL = "https://t.me/a4securebot"
+    const val SUB_KEY_HOST = "sub.a4secure.xyz"
 
     // Temporary: new installations must start only with a subscription supplied
     // by the user. Keep the URL constant to recognize legacy saved profiles.
@@ -68,6 +69,7 @@ object AppConfig {
     const val CUSTOM_OPTIONS_ROUTING = "routing"
     const val CUSTOM_ROUTING_FROM_APP = "app"
     const val PREF_SPEED_ENABLED = "pref_speed_enabled"
+    const val PREF_LIQUID_GLASS_ENABLED = "pref_liquid_glass_enabled"
     const val PREF_CONFIRM_REMOVE = "pref_confirm_remove"
     const val PREF_DOUBLE_COLUMN_DISPLAY = "pref_double_column_display"
     const val PREF_GROUP_ALL_DISPLAY = "pref_group_all_display"
@@ -354,6 +356,7 @@ object AppConfig {
     )
 
     val GEO_FILES_SOURCES = arrayListOf(
+        ROSCOM_GEO_SOURCE,
         "Loyalsoldier/v2ray-rules-dat",
         "runetfreedom/russia-v2ray-rules-dat",
         "Chocolate4U/Iran-v2ray-rules"

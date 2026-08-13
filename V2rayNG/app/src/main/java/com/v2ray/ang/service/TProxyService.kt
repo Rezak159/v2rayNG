@@ -19,17 +19,20 @@ class TProxyService(
     private val restartCallback: () -> Unit
 ) : Tun2SocksControl {
     companion object {
+        // a4vpn: сигнатуры должны точно совпадать с тем, что реально умеет
+        // libhev-socks5-tunnel.so в app/libs — это старый бинарник (Start/Stop
+        // без возврата значения, без TProxyIsRunning). Апстрим 2.3.3 принёс
+        // Kotlin-обёртку под НОВУЮ версию этой библиотеки (Boolean-возвраты +
+        // TProxyIsRunning), но сам .so при мёрже не обновился — несовпадение
+        // сигнатур валит RegisterNatives и роняет процесс сервиса по SIGABRT
+        // ещё до того, как VPN успевает подключиться.
         @JvmStatic
         @Suppress("FunctionName")
-        private external fun TProxyStartService(configPath: String, fd: Int): Boolean
+        private external fun TProxyStartService(configPath: String, fd: Int)
 
         @JvmStatic
         @Suppress("FunctionName")
-        private external fun TProxyStopService(): Boolean
-
-        @JvmStatic
-        @Suppress("FunctionName")
-        private external fun TProxyIsRunning(): Boolean
+        private external fun TProxyStopService()
 
         @JvmStatic
         @Suppress("FunctionName")

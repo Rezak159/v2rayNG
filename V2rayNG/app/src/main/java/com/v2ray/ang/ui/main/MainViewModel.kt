@@ -218,6 +218,7 @@ class MainViewModel(
                 delay(32L)
                 dataSource.initAssets()
                 dataSource.syncSubscriptions()
+                dataSource.syncGeoFiles()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {

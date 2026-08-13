@@ -3,7 +3,6 @@ package com.v2ray.ang.ui.perappproxy
 import android.os.Bundle
 import androidx.activity.viewModels
 import androidx.annotation.StringRes
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,14 +33,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.AppInfo
-import com.v2ray.ang.extension.toastInfo
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.ui.base.BaseComponentActivity
 import com.v2ray.ang.ui.compose.AppDivider
@@ -76,20 +73,14 @@ class PerAppProxyActivity : BaseComponentActivity() {
         val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
         val blacklist by viewModel.blacklist.collectAsStateWithLifecycle()
         val perAppProxyEnabled by viewModel.perAppProxyEnabled.collectAsStateWithLifecycle()
-        val bypassApps by viewModel.bypassApps.collectAsStateWithLifecycle()
 
         PerAppProxyScreen(
             apps = apps,
             isLoading = isLoading,
             blacklist = blacklist,
             perAppProxyEnabled = perAppProxyEnabled,
-            bypassApps = bypassApps,
             onBackClick = { finish() },
             onPerAppProxyChanged = { viewModel.setPerAppProxyEnabled(it) },
-            onBypassAppsChanged = { viewModel.setBypassAppsEnabled(it) },
-            onInfoClick = {
-                toastInfo(R.string.summary_pref_per_app_proxy)
-            },
             onToggleApp = { viewModel.toggle(it) },
             onSearch = { viewModel.filterApps(it) },
             onSelectAll = { viewModel.selectAll() },
@@ -114,11 +105,8 @@ fun PerAppProxyScreen(
     isLoading: Boolean,
     blacklist: Set<String>,
     perAppProxyEnabled: Boolean,
-    bypassApps: Boolean,
     onBackClick: () -> Unit,
     onPerAppProxyChanged: (Boolean) -> Unit,
-    onBypassAppsChanged: (Boolean) -> Unit,
-    onInfoClick: () -> Unit,
     onToggleApp: (String) -> Unit,
     onSearch: (String) -> Unit,
     onSelectAll: () -> Unit,
@@ -204,58 +192,30 @@ fun PerAppProxyScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = stringResource(R.string.per_app_proxy_settings_enable),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Switch(
-                            checked = perAppProxyEnabled,
-                            modifier = Modifier.scale(0.65f),
-                            onCheckedChange = onPerAppProxyChanged,
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = MaterialTheme.colorScheme.onSecondary,
-                                checkedTrackColor = colorFabActive
-                            )
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
                         Text(
-                            text = stringResource(R.string.switch_bypass_apps_mode),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Switch(
-                            checked = bypassApps,
-                            modifier = Modifier.scale(0.65f),
-                            onCheckedChange = onBypassAppsChanged,
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = MaterialTheme.colorScheme.onSecondary,
-                                checkedTrackColor = colorFabActive
-                            )
+                            text = stringResource(R.string.per_app_proxy_settings_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    IconButton(onClick = onInfoClick) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_about_24dp),
-                            contentDescription = stringResource(R.string.acc_per_app_proxy_information),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Switch(
+                        checked = perAppProxyEnabled,
+                        onCheckedChange = onPerAppProxyChanged,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.onSecondary,
+                            checkedTrackColor = colorFabActive
                         )
-                    }
+                    )
                 }
             }
             AppDivider()

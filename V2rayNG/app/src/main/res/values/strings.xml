@@ -163,6 +163,7 @@
     <string name="menu_item_import_proxy_app">Import from Clipboard</string>
     <string name="per_app_proxy_settings">Per-app settings</string>
     <string name="per_app_proxy_settings_enable">Enable per-app</string>
+    <string name="per_app_proxy_settings_description">Checked apps below will bypass the VPN and connect directly.</string>
     <string name="app_picker_unknown_app">Unknown app (UID not recognized)</string>
 
     <!-- Preferences -->
@@ -464,6 +465,7 @@
         <item>Dark</item>
     </string-array>
 
+    <string name="routing_preset_roscom_russia">Russia (RoscomVPN)</string>
     <string name="routing_preset_china_whitelist">China Whitelist</string>
     <string name="routing_preset_china_blacklist">China Blacklist</string>
     <string name="routing_preset_global">Global</string>

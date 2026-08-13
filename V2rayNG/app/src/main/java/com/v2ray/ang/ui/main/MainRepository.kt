@@ -16,6 +16,7 @@ import com.v2ray.ang.dto.entities.SubscriptionCache
 import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.AppLocaleManager
+import com.v2ray.ang.handler.GeoUpdater
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.SubscriptionUpdater
@@ -230,6 +231,10 @@ class MainRepository(
 
     override fun syncSubscriptions() {
         SubscriptionUpdater.sync(app)
+    }
+
+    override fun syncGeoFiles() {
+        GeoUpdater.sync(app)
     }
 
     override fun initAssets() {

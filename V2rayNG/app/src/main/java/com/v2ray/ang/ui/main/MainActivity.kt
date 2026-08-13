@@ -154,6 +154,17 @@ class MainActivity : HelperBaseComponentActivity() {
             toastError(R.string.toast_failure)
             return
         }
+
+        // Платная подписка на устройстве одна: старую (в т.ч. неудачно закачавшуюся)
+        // подчищаем перед вводом новой ссылки, иначе importUrlAsSubscription молча
+        // откажет в добавлении, пока висит любая нефри-подписка.
+        MmkvManager.decodeSubscriptions()
+            .filter { it.subscription.url != AppConfig.FREE_SUB_URL }
+            .forEach {
+                MmkvManager.removeServerViaSubid(it.guid)
+                MmkvManager.removeSubscription(it.guid)
+            }
+
         mainViewModel.onAction(MainAction.ImportBatchConfig(subscriptionUrl))
     }
 

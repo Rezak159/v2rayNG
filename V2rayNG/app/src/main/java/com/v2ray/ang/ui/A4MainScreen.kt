@@ -1,7 +1,11 @@
 package com.v2ray.ang.ui
 
-import android.content.Intent
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
+import com.v2ray.ang.extension.DIVISOR
+import com.v2ray.ang.extension.THRESHOLD
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -70,11 +74,11 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -104,11 +108,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -148,14 +155,14 @@ private enum class A4Tab(val label: String) {
  * A4BottomNav рисуется поверх контента (см. A4MainScreen), а не в потоке разметки,
  * поэтому вкладки должны сами резервировать этот отступ снизу — иначе последние
  * элементы списков оказываются под плавающей капсулой и до них не долистать.
- * Значение = верхний(6dp) + нижний(28dp) паддинг капсулы + её высота(58dp) + внутренний паддинг(6dp*2).
- * Нижний паддинг увеличен на 16dp сверх видимой формы капсулы — снизу капсулы
- * невидимая зона захвата: мимо-тапы гасятся вместо того, чтобы попадать по
- * соседней карточке сервера (сверху и по бокам такой проблемы не было, туда
- * лишний отступ не добавляли). 64dp пробовали раньше — капсула из-за этого
- * ощутимо уезжала вверх от нижнего края, выглядело как «нав-бар вырос вдвое».
+ * Значение = верхний(6dp) + нижний(18dp) паддинг капсулы + её высота(58dp) + внутренний паддинг(6dp*2).
+ * Нижний паддинг включает небольшую невидимую зону захвата под капсулой:
+ * мимо-тапы гасятся вместо того, чтобы попадать по соседней карточке сервера
+ * (сверху и по бокам такой проблемы не было, туда лишний отступ не добавляли).
+ * 64dp пробовали раньше — капсула ощутимо уезжала вверх от нижнего края,
+ * выглядело как «нав-бар вырос вдвое», поэтому держим отступ небольшим.
  */
-internal val A4BottomNavClearance = 104.dp
+internal val A4BottomNavClearance = 94.dp
 
 /** A4 visual shell over the original view-model and VPN service. */
 @Composable
@@ -403,6 +410,7 @@ private fun A4BottomNav(
     var lensStretch by remember { mutableStateOf(1f) }
     var lastFingerX by remember { mutableStateOf<Float?>(null) }
     var dragTarget by remember { mutableStateOf<A4Tab?>(null) }
+    val glassEnabled by MmkvManager.rememberMmkvBool(AppConfig.PREF_LIQUID_GLASS_ENABLED, true)
     Box(
         modifier
             .fillMaxWidth()
@@ -417,13 +425,13 @@ private fun A4BottomNav(
             // неё. До самих вкладок тапы всё равно доходят раньше — их клики уже
             // отработали за счёт порядка диспетчеризации (дети раньше родителя).
             .pointerInput(Unit) { detectTapGestures {} }
-            .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 28.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 18.dp),
     ) {
         // Плавающая стеклянная капсула из ветки liquid-glass.
         Box(
             Modifier
                 .fillMaxWidth()
-                .a4LiquidGlass(CircleShape, backdrop, milk = 0.82f, elevation = 10.dp)
+                .a4LiquidGlass(CircleShape, backdrop, milk = 0.82f, elevation = 10.dp, opaque = !glassEnabled)
                 .padding(6.dp),
         ) {
             BoxWithConstraints(Modifier.fillMaxWidth().height(58.dp)) {
@@ -694,6 +702,22 @@ private fun HomeTab(
     onOpenServers: () -> Unit,
 ) {
     val serverName = server?.profile?.remarks?.ifBlank { null } ?: "Загружаем сервер…"
+    val context = LocalContext.current
+    // Android держит один активный VPN-туннель на устройство: если уже поднят
+    // чужой, наш either не установится, либо вытеснит его без предупреждения —
+    // человек видит зависшее «шифруем трафик» и не понимает почему. Пока мы сами
+    // не подключены, раз в пару секунд проверяем, не занят ли VPN-слот кем-то ещё.
+    var foreignVpnActive by remember { mutableStateOf(false) }
+    LaunchedEffect(conn) {
+        if (conn == A4ConnState.Connected) {
+            foreignVpnActive = false
+            return@LaunchedEffect
+        }
+        while (true) {
+            foreignVpnActive = isForeignVpnActive(context)
+            delay(2000)
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -701,6 +725,31 @@ private fun HomeTab(
             .padding(horizontal = 20.dp),
     ) {
         Spacer(Modifier.height(8.dp))
+        AnimatedVisibility(visible = foreignVpnActive) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(A4Red.copy(alpha = 0.12f))
+                    .border(1.dp, A4Red.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Rounded.WarningAmber,
+                    contentDescription = null,
+                    tint = A4Red,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "На устройстве уже активен другой VPN — отключи его, иначе a4vpn может не подключиться",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = A4Ink,
+                )
+            }
+        }
         StatusHeadline(conn)
 
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -762,6 +811,15 @@ private fun HomeTab(
     }
 }
 
+/** true, если VPN-слот системы занят чужим приложением (наша служба сейчас не запущена). */
+private fun isForeignVpnActive(context: Context): Boolean {
+    val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        ?: return false
+    val network = connectivity.activeNetwork ?: return false
+    val capabilities = connectivity.getNetworkCapabilities(network) ?: return false
+    return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+}
+
 /**
  * Отдельная карточка остатка трафика на Главной:
  *   339 ГБ  осталось                 37 дней ⏳
@@ -781,7 +839,7 @@ private fun TrafficCard(sub: SubscriptionItem) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (sub.isUnlimited) {
-                Text("Безлимит", style = MaterialTheme.typography.titleMedium, color = A4Ink)
+                Text("∞ ГБ", style = MaterialTheme.typography.titleMedium, color = A4Ink)
             } else {
                 val low = sub.usedFraction() >= 0.9f
                 Text(
@@ -795,12 +853,13 @@ private fun TrafficCard(sub: SubscriptionItem) {
                 )
             }
             Spacer(Modifier.weight(1f))
-            if (days != null) {
-                val urgent = days < 7
+            val label = sub.expiryShortLabel()
+            if (label != null) {
+                val urgent = days != null && days < 7
                 val tint = if (urgent) A4Red else A4TextMuted
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "$days ${pluralDays(days)}",
+                        label,
                         style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
                         color = tint,
                     )
@@ -814,18 +873,8 @@ private fun TrafficCard(sub: SubscriptionItem) {
                 }
             }
         }
-        if (!sub.isUnlimited) {
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                A4TrafficBar(sub.usedFraction(), Modifier.weight(1f))
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    "${(sub.usedFraction() * 100).roundToInt()}%",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = A4TextMuted,
-                )
-            }
-        }
+        Spacer(Modifier.height(10.dp))
+        A4TrafficBar(if (sub.isUnlimited) 1f else sub.usedFraction(), Modifier.fillMaxWidth())
     }
 }
 
@@ -908,9 +957,21 @@ private fun ConnectingDots() {
     }
 }
 
-private fun speedParts(bps: Long): Pair<String, String> = when {
-    bps >= 1_048_576L -> "%.1f".format(bps / 1_048_576f) to "МБ/с"
-    else -> (bps / 1024L).toString() to "КБ/с"
+private val speedUnits = arrayOf("Б", "КБ", "МБ", "ГБ", "ТБ", "ПБ")
+
+// Та же лестница единиц (шаг THRESHOLD/DIVISOR), что и в toTrafficString(),
+// который использует уведомление о подключении — раньше тут была отдельная
+// самопальная формула с усечением до целых КБ/с, из-за чего скорость ниже
+// 1 КБ/с всегда показывала "0".
+private fun speedParts(bps: Long): Pair<String, String> {
+    var size = bps.toDouble()
+    var unitIndex = 0
+    while (size >= THRESHOLD && unitIndex < speedUnits.size - 1) {
+        size /= DIVISOR
+        unitIndex++
+    }
+    val value = if (unitIndex == 0) size.toLong().toString() else "%.1f".format(size)
+    return value to "${speedUnits[unitIndex]}/с"
 }
 
 private fun sessionParts(sec: Long): Pair<String, String> = when {
@@ -1284,14 +1345,6 @@ private fun SubscriptionEntry(
     isLoading: Boolean,
     onImportSubscription: (String) -> Unit,
 ) {
-    val context = LocalContext.current
-    val haptic = LocalHapticFeedback.current
-
-    fun openBot() {
-        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AppConfig.TELEGRAM_BOT_URL)))
-    }
-
     Box(
         Modifier
             .fillMaxSize()
@@ -1335,13 +1388,13 @@ private fun SubscriptionEntry(
             A4StaggerIn(2) {
                 Column(Modifier.fillMaxWidth()) {
                     Text(
-                        "Вход через Telegram",
+                        "Ключ доступа",
                         style = MaterialTheme.typography.headlineMedium,
                         color = A4Ink,
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Открой бота и нажми «Подключить» — приложение настроится само.",
+                        "Вставь фирменную ссылку из Telegram — приложение настроится само.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = A4TextMuted,
                     )
@@ -1349,10 +1402,6 @@ private fun SubscriptionEntry(
             }
             Spacer(Modifier.height(18.dp))
             A4StaggerIn(3) {
-                OpenBotButton(busy = isLoading, onClick = { openBot() })
-            }
-            Spacer(Modifier.height(12.dp))
-            A4StaggerIn(4) {
                 SubscriptionLinkEntry(
                     busy = isLoading,
                     onSubmit = onImportSubscription,
@@ -1366,107 +1415,97 @@ private fun SubscriptionEntry(
 @Composable
 private fun SubscriptionLinkEntry(busy: Boolean, onSubmit: (String) -> Unit) {
     var subscriptionUrl by remember { mutableStateOf("") }
+    var focused by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
     val canSubmit = subscriptionUrl.isNotBlank() && !busy
 
     fun submit() {
         if (!canSubmit) return
+        val trimmed = subscriptionUrl.trim()
+        if (Uri.parse(trimmed).host != AppConfig.SUB_KEY_HOST) {
+            haptic.performHapticFeedback(HapticFeedbackType.Reject)
+            error = true
+            return
+        }
         haptic.performHapticFeedback(HapticFeedbackType.Confirm)
-        onSubmit(subscriptionUrl.trim())
+        onSubmit(trimmed)
     }
 
+    val borderColor by animateColorAsState(
+        targetValue = when {
+            error -> A4Red
+            focused -> A4Ink
+            else -> A4Border
+        },
+        animationSpec = tween(200),
+        label = "keyFieldBorder",
+    )
+
     Column(Modifier.fillMaxWidth()) {
-        Text(
-            "Уже есть ключ?",
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-            color = A4Ink,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "Вставь ключ или ссылку из Telegram — подключим её прямо здесь.",
-            style = MaterialTheme.typography.bodySmall,
-            color = A4TextMuted,
-        )
-        Spacer(Modifier.height(10.dp))
-        OutlinedTextField(
-            value = subscriptionUrl,
-            onValueChange = { subscriptionUrl = it },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !busy,
-            singleLine = true,
-            label = { Text("Ссылка подписки") },
-            placeholder = { Text("https://…") },
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Uri,
-                imeAction = ImeAction.Done,
-            ),
-            keyboardActions = KeyboardActions(onDone = { submit() }),
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(A4PaperCard)
+                .border(1.5.dp, borderColor, RoundedCornerShape(14.dp))
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+        ) {
+            BasicTextField(
+                value = subscriptionUrl,
+                onValueChange = {
+                    subscriptionUrl = it
+                    error = false
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { focused = it.isFocused },
+                enabled = !busy,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = A4Ink),
+                cursorBrush = SolidColor(A4Red),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(onDone = { submit() }),
+                decorationBox = { innerField ->
+                    if (subscriptionUrl.isEmpty()) {
+                        Text(
+                            "sub.a4secure.xyz/…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = A4TextMuted,
+                        )
+                    }
+                    innerField()
+                },
+            )
+        }
+        AnimatedVisibility(visible = error) {
+            Column {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Это не похоже на наш ключ — возьми ссылку у бота a4vpn в Telegram",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = A4Red,
+                )
+            }
+        }
         Spacer(Modifier.height(10.dp))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .springClick(scale = 0.97f) { submit() }
                 .clip(RoundedCornerShape(10.dp))
-                .background(if (canSubmit) A4Ink else A4TextMuted)
-                .padding(vertical = 14.dp),
+                .background(if (canSubmit) A4Red else A4TextMuted)
+                .padding(vertical = 16.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                if (busy) "ПРОВЕРЯЕМ КЛЮЧ…" else "ПОДКЛЮЧИТЬ ПО ССЫЛКЕ",
-                style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp, letterSpacing = 0.7.sp),
+                if (busy) "ПОДКЛЮЧАЕМ…" else "ПОДКЛЮЧИТЬ",
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, letterSpacing = 1.sp),
                 color = Color.White,
             )
-        }
-    }
-}
-
-@Composable
-private fun OpenBotButton(busy: Boolean, onClick: () -> Unit) {
-    val arrowNudge by rememberInfiniteTransition(label = "submit").animateFloat(
-        initialValue = 0f,
-        targetValue = 5f,
-        animationSpec = infiniteRepeatable(tween(700, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "submitArrow",
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .springClick(scale = 0.97f) { if (!busy) onClick() }
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (busy) A4TextMuted else A4Red)
-            .padding(vertical = 16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        AnimatedContent(
-            targetState = busy,
-            transitionSpec = {
-                fadeIn(tween(200)) togetherWith fadeOut(tween(120)) using SizeTransform(clip = false)
-            },
-            label = "submitLabel",
-        ) { isBusy ->
-            if (isBusy) {
-                Text(
-                    "ПОДКЛЮЧАЕМ…",
-                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, letterSpacing = 1.sp),
-                    color = Color.White,
-                )
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "ОТКРЫТЬ TELEGRAM",
-                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, letterSpacing = 1.sp),
-                        color = Color.White,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "→",
-                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 17.sp),
-                        color = Color.White,
-                        modifier = Modifier.offset(x = arrowNudge.dp),
-                    )
-                }
-            }
         }
     }
 }

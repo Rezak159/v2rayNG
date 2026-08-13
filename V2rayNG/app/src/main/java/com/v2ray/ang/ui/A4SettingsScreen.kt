@@ -130,6 +130,7 @@ private fun A4SettingsContent(
     val haptic = LocalHapticFeedback.current
     var autoStart by rememberMmkvBool(AppConfig.PREF_IS_BOOTED, false)
     var showSpeed by rememberMmkvBool(AppConfig.PREF_SPEED_ENABLED, false)
+    var liquidGlass by rememberMmkvBool(AppConfig.PREF_LIQUID_GLASS_ENABLED, true)
     var logLevel by rememberMmkvString(AppConfig.PREF_LOGLEVEL, "warning")
 
     val subscription = remember { activeSubscription() }
@@ -226,6 +227,18 @@ private fun A4SettingsContent(
                     title = "Исключения по приложениям",
                     description = "какие приложения не пускать через VPN",
                     onClick = onOpenPerAppProxy,
+                )
+                HorizontalDivider(color = A4Border)
+                SettingsToggleRow(
+                    title = "Жидкое стекло",
+                    description = "прозрачный нижний навбар со стеклянным эффектом",
+                    checked = liquidGlass,
+                    onCheckedChange = {
+                        haptic.performHapticFeedback(
+                            if (it) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff,
+                        )
+                        liquidGlass = it
+                    },
                 )
             }
 
@@ -343,63 +356,56 @@ private fun BackArrow(onClick: () -> Unit) {
     }
 }
 
-/** Блок подписки в настройках: название тарифа, трафик с полосой и срок действия. */
+/** Блок подписки в настройках: название, трафик с полосой и мета-данные одной строкой. */
 @Composable
 private fun SubscriptionCard(sub: SubscriptionItem) {
     val title = sub.title.ifBlank { sub.remarks.ifBlank { "Подписка" } }
     SettingsCard {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                color = A4Ink,
-            )
-        }
-        HorizontalDivider(color = A4Border)
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = A4Ink)
+            Spacer(Modifier.height(12.dp))
+
+            Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    "Трафик",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    if (sub.isUnlimited) "∞ ГБ" else "${formatGib(sub.usedBytes)} ГБ",
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold),
                     color = A4Ink,
-                    modifier = Modifier.weight(1f),
                 )
+                if (!sub.isUnlimited) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "из ${formatGib(sub.totalBytes)} ГБ",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = A4TextMuted,
+                        modifier = Modifier.padding(bottom = 2.dp),
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "${(sub.usedFraction() * 100).roundToInt()}%",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = A4TextMuted,
+                        modifier = Modifier.padding(bottom = 3.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            A4TrafficBar(if (sub.isUnlimited) 1f else sub.usedFraction(), Modifier.fillMaxWidth())
+
+            val meta = listOfNotNull(
+                sub.expireDateText()?.let { "до $it" },
+                sub.refillDateText()?.let { "обнулится $it" },
+                sub.lastUpdatedText()?.let { "обновлена $it" },
+            )
+            if (meta.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
                 Text(
-                    if (sub.isUnlimited) {
-                        "Безлимит"
-                    } else {
-                        "${formatGib(sub.usedBytes)} из ${formatGib(sub.totalBytes)} ГБ · " +
-                            "${(sub.usedFraction() * 100).roundToInt()}%"
-                    },
+                    meta.joinToString("  ·  "),
                     style = MaterialTheme.typography.bodySmall,
                     color = A4TextMuted,
                 )
             }
-            if (!sub.isUnlimited) {
-                Spacer(Modifier.height(10.dp))
-                A4TrafficBar(sub.usedFraction(), Modifier.fillMaxWidth())
-                sub.refillDateText()?.let { date ->
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Обнулится $date",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = A4TextMuted,
-                    )
-                }
-            }
-        }
-        sub.expireDateText()?.let { date ->
-            HorizontalDivider(color = A4Border)
-            SettingsInfoRow("Действует до", date)
-        }
-        sub.lastUpdatedText()?.let { moment ->
-            HorizontalDivider(color = A4Border)
-            SettingsInfoRow("Обновлена", moment)
         }
     }
 }

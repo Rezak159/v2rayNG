@@ -1,6 +1,8 @@
 package com.v2ray.ang.enums
 
 enum class RoutingType(val fileName: String) {
+    // a4vpn: the only preset offered in the UI (see RoutingPreset in RoutingSettingActivity)
+    ROSCOM("custom_routing_roscom"),
     WHITE("custom_routing_white"),
     BLACK("custom_routing_black"),
     GLOBAL("custom_routing_global"),
