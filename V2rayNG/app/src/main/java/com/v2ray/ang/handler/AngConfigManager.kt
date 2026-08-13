@@ -566,6 +566,10 @@ object AngConfigManager {
      */
     fun updateConfigViaSub(it: SubscriptionCache): SubscriptionUpdateResult {
         try {
+            if (!AppConfig.FREE_SUBSCRIPTION_ENABLED && it.subscription.url == AppConfig.FREE_SUB_URL) {
+                return SubscriptionUpdateResult(skipCount = 1)
+            }
+
             // Check if disabled
             if (!it.subscription.enabled) {
                 return SubscriptionUpdateResult(skipCount = 1)
@@ -761,6 +765,10 @@ object AngConfigManager {
      * @return The number of subscriptions imported.
      */
     private fun importUrlAsSubscription(url: String): Int {
+        if (!AppConfig.FREE_SUBSCRIPTION_ENABLED && url == AppConfig.FREE_SUB_URL) {
+            return 0
+        }
+
         val subscriptions = MmkvManager.decodeSubscriptions()
         val existing = subscriptions.firstOrNull { it.subscription.url == url }
         if (existing != null) {

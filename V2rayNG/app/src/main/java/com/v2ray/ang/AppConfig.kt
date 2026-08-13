@@ -57,6 +57,10 @@ object AppConfig {
     const val APP_LINK_HOST = "import.a4secure.xyz"
     const val APP_LINK_SUB_PATH = "/app/sub/"
     const val TELEGRAM_BOT_URL = "https://t.me/a4securebot"
+
+    // Temporary: new installations must start only with a subscription supplied
+    // by the user. Keep the URL constant to recognize legacy saved profiles.
+    const val FREE_SUBSCRIPTION_ENABLED = false
     const val FREE_SUB_URL = "https://import.a4secure.xyz/free"
     const val FREE_SUB_REMARKS = "Бесплатно"
 
