@@ -8,6 +8,7 @@ import androidx.work.WorkManager
 import com.tencent.mmkv.MMKV
 import com.v2ray.ang.AppConfig.ANG_PACKAGE
 import com.v2ray.ang.handler.AppLocaleManager
+import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.ui.compose.ThemeManager
 
@@ -45,7 +46,21 @@ class AngApplication : Application() {
         // Ensure critical preference defaults are present in MMKV early
         SettingsManager.initApp(this)
 
+        removeDisabledFreeSubscription()
+
         // Initialize theme state from MMKV
         ThemeManager.refresh()
+    }
+
+    /**
+     * Removes only the legacy Telegram-only subscription restored by Android Backup.
+     * Paid subscriptions and every other app setting stay intact.
+     */
+    private fun removeDisabledFreeSubscription() {
+        if (AppConfig.FREE_SUBSCRIPTION_ENABLED) return
+
+        MmkvManager.decodeSubscriptions()
+            .filter { it.subscription.url == AppConfig.FREE_SUB_URL }
+            .forEach { MmkvManager.removeSubscription(it.guid) }
     }
 }
