@@ -592,6 +592,7 @@ object AngConfigManager {
                     return SubscriptionUpdateResult(failureCount = 1)
                 }
             }
+            SubscriptionTelemetry.report(url)
             LogUtil.i(AppConfig.TAG, url)
             val userAgent = it.subscription.userAgent
             val requestHeaders = it.subscription.requestHeaders

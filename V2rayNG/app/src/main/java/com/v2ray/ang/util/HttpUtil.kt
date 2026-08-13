@@ -5,8 +5,10 @@ import com.v2ray.ang.AppConfig.LOOPBACK
 import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.dto.UrlContentRequest
 import okhttp3.Credentials
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.IOException
 import java.net.IDN
@@ -20,6 +22,8 @@ import java.net.URL
 import java.util.concurrent.TimeUnit
 
 object HttpUtil {
+
+    private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
     /**
      * Converts the domain part of a URL string to its IDN (Punycode, ASCII Compatible Encoding) format.
@@ -131,6 +135,24 @@ object HttpUtil {
             LogUtil.e(AppConfig.TAG, "Failed to get URL content", e)
         }
         return null
+    }
+
+    /** Sends a best-effort JSON event. A failed telemetry request must never affect VPN work. */
+    fun postJson(url: String, json: String, timeout: Int = 3_000) {
+        try {
+            val client = buildOkHttpClient(timeout, 0, null, null, followRedirects = false)
+            val request = Request.Builder()
+                .url(url)
+                .post(json.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    LogUtil.w(AppConfig.TAG, "Telemetry request failed, code=${response.code}")
+                }
+            }
+        } catch (e: Exception) {
+            LogUtil.w(AppConfig.TAG, "Telemetry request failed: ${e.message}")
+        }
     }
 
     /**
