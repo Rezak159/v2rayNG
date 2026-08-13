@@ -32,6 +32,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,10 +41,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -57,12 +61,20 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -83,6 +95,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -96,10 +109,15 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -126,6 +144,19 @@ private enum class A4Tab(val label: String) {
     Settings("Настройки"),
 }
 
+/**
+ * A4BottomNav рисуется поверх контента (см. A4MainScreen), а не в потоке разметки,
+ * поэтому вкладки должны сами резервировать этот отступ снизу — иначе последние
+ * элементы списков оказываются под плавающей капсулой и до них не долистать.
+ * Значение = верхний(6dp) + нижний(28dp) паддинг капсулы + её высота(58dp) + внутренний паддинг(6dp*2).
+ * Нижний паддинг увеличен на 16dp сверх видимой формы капсулы — снизу капсулы
+ * невидимая зона захвата: мимо-тапы гасятся вместо того, чтобы попадать по
+ * соседней карточке сервера (сверху и по бокам такой проблемы не было, туда
+ * лишний отступ не добавляли). 64dp пробовали раньше — капсула из-за этого
+ * ощутимо уезжала вверх от нижнего края, выглядело как «нав-бар вырос вдвое».
+ */
+internal val A4BottomNavClearance = 104.dp
+
 /** A4 visual shell over the original view-model and VPN service. */
 @Composable
 fun A4MainScreen(
@@ -133,7 +164,8 @@ fun A4MainScreen(
     onConnectionClick: () -> Unit,
     onSelectServer: (String) -> Unit,
     onOpenLogcat: () -> Unit,
-    onUseFree: () -> Unit,
+    onOpenPerAppProxy: () -> Unit,
+    onImportSubscription: (String) -> Unit,
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
     // Читаем state.groups здесь, во внешнем scope, чтобы он пересобирался после
@@ -147,7 +179,10 @@ fun A4MainScreen(
 
     A4Theme {
         if (!hasUsableSubscription) {
-            SubscriptionEntry(isLoading = state.isLoading, onUseFree = onUseFree)
+            SubscriptionEntry(
+                isLoading = state.isLoading,
+                onImportSubscription = onImportSubscription,
+            )
         } else {
             A4AppHome(
                 mainViewModel = mainViewModel,
@@ -158,6 +193,7 @@ fun A4MainScreen(
                 onConnectionClick = onConnectionClick,
                 onSelectServer = onSelectServer,
                 onOpenLogcat = onOpenLogcat,
+                onOpenPerAppProxy = onOpenPerAppProxy,
             )
         }
     }
@@ -173,6 +209,7 @@ private fun A4AppHome(
     onConnectionClick: () -> Unit,
     onSelectServer: (String) -> Unit,
     onOpenLogcat: () -> Unit,
+    onOpenPerAppProxy: () -> Unit,
 ) {
     val servers by mainViewModel.serversForGroup(selectedGroupId).collectAsStateWithLifecycle()
     // speed/session держим как State и отдаём вниз лямбдами: тогда тик раз в секунду
@@ -184,6 +221,20 @@ private fun A4AppHome(
     val isSelectedServerReady = selectedServer != null && selectedServer.guid == selectedGuid
     val canControlConnection = isRunning || isSelectedServerReady
     var tab by remember { mutableStateOf(A4Tab.Home) }
+    // Вход в список серверов анимируем только один раз за сессию экрана: сам таб
+    // пересоздаётся при каждом переключении вкладок (AnimatedContent), а флаг
+    // живёт здесь и переживает такие переключения.
+    var serversEntranceShown by remember { mutableStateOf(false) }
+    // Полноценный пинг всех серверов один раз за сессию: срабатывает, как только
+    // список серверов впервые загрузился — то есть уже к первому открытию
+    // Серверов результаты обычно готовы или вот-вот будут.
+    var autoPingTriggered by remember { mutableStateOf(false) }
+    LaunchedEffect(servers) {
+        if (!autoPingTriggered && servers.isNotEmpty()) {
+            autoPingTriggered = true
+            mainViewModel.testAllRealPing()
+        }
+    }
 
     // локальная фаза «подключаемся»: сервис знает только вкл/выкл
     var connecting by remember { mutableStateOf(false) }
@@ -231,7 +282,11 @@ private fun A4AppHome(
         // В источник попадает и фон, и содержимое вкладок. Нижняя навигация
         // рисуется снаружи: иначе стекло размывало бы само себя.
         Box(Modifier.fillMaxSize().a4GlassBackdropSource(glassBackdrop)) {
-            A4Backdrop(conn == A4ConnState.Connected)
+            // Точки декора нарисованы в фиксированной точке экрана (верх-право) не
+            // завися от вкладки — на Серверах туда садится кнопка «Пинг» и они
+            // накладываются друг на друга. Точки — часть «героя» Главной, на
+            // остальных вкладках их не рисуем.
+            A4Backdrop(active = conn == A4ConnState.Connected, showDots = tab == A4Tab.Home)
             Column(
                 Modifier
                     .fillMaxSize()
@@ -274,10 +329,16 @@ private fun A4AppHome(
                                 servers = servers,
                                 selectedGuid = selectedGuid,
                                 isTesting = isTesting,
+                                connected = conn == A4ConnState.Connected,
                                 onSelectServer = selectServer,
                                 onTestPing = { mainViewModel.testAllRealPing() },
+                                animateEntrance = !serversEntranceShown,
+                                onEntranceShown = { serversEntranceShown = true },
                             )
-                            A4Tab.Settings -> A4SettingsTab(onOpenLogcat = onOpenLogcat)
+                            A4Tab.Settings -> A4SettingsTab(
+                                onOpenLogcat = onOpenLogcat,
+                                onOpenPerAppProxy = onOpenPerAppProxy,
+                            )
                         }
                     }
                 }
@@ -312,12 +373,15 @@ private fun A4TopBar() {
         Spacer(Modifier.width(8.dp))
         Text(
             buildAnnotatedString {
-                withStyle(SpanStyle(color = A4Red)) { append("a4") }
+                append("a")
+                withStyle(SpanStyle(color = A4Red)) { append("4") }
                 append("vpn")
             },
-            style = MaterialTheme.typography.headlineMedium.copy(
+            style = TextStyle(
+                fontFamily = A4Unbounded,
+                fontWeight = FontWeight.ExtraBold,
                 fontSize = 22.sp,
-                fontWeight = FontWeight.Black,
+                letterSpacing = (-0.22).sp,
             ),
             color = A4Ink,
         )
@@ -342,7 +406,17 @@ private fun A4BottomNav(
         modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 12.dp),
+            // Капсула плавает над контентом, а не в потоке разметки, поэтому вокруг
+            // неё всегда остаётся немного пустого места (внешние отступы снизу).
+            // Без поглощения тапов здесь промах мимо капсулы проваливается в список
+            // под ней — выглядит как «нажал на Главную, а выбрался сервер снизу
+            // списка». pointerInput должен стоять ДО .padding(...), иначе он меряет
+            // размер уже урезанной padding'ом области — то есть только саму видимую
+            // капсулу, где клики по вкладкам и так уже работали, а не отступы вокруг
+            // неё. До самих вкладок тапы всё равно доходят раньше — их клики уже
+            // отработали за счёт порядка диспетчеризации (дети раньше родителя).
+            .pointerInput(Unit) { detectTapGestures {} }
+            .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 28.dp),
     ) {
         // Плавающая стеклянная капсула из ветки liquid-glass.
         Box(
@@ -357,10 +431,7 @@ private fun A4BottomNav(
                 val itemWPx = with(density) { itemW.toPx() }
                 val settledX by animateDpAsState(
                     targetValue = itemW * (dragTarget ?: current).ordinal,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMediumLow,
-                    ),
+                    animationSpec = spring(dampingRatio = 0.68f, stiffness = 500f),
                     label = "pill",
                 )
                 fun tabAt(x: Float): A4Tab = A4Tab.entries[
@@ -369,18 +440,12 @@ private fun A4BottomNav(
                 val lensOffset = if (lensInMotion) lensX.value else with(density) { settledX.toPx() }
                 val lensScaleX by animateFloatAsState(
                     targetValue = lensStretch,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium,
-                    ),
+                    animationSpec = spring(dampingRatio = 0.6f, stiffness = 900f),
                     label = "lensStretchX",
                 )
                 val lensScaleY by animateFloatAsState(
                     targetValue = 2f - lensStretch,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium,
-                    ),
+                    animationSpec = spring(dampingRatio = 0.6f, stiffness = 900f),
                     label = "lensStretchY",
                 )
                 // Линза подсвечивает активную вкладку поверх общего стекла.
@@ -423,13 +488,9 @@ private fun A4BottomNav(
                                         .coerceIn(0f, size.width - itemWPx)
                                     scope.launch {
                                         lensX.snapTo(current.ordinal * itemWPx)
-                                        lensX.animateTo(
-                                            desiredX,
-                                            spring(
-                                                dampingRatio = 0.82f,
-                                                stiffness = Spring.StiffnessLow,
-                                            ),
-                                        )
+                                        // Мягкий «вылет» линзы к пальцу — единственное место,
+                                        // где во время долгого тапа ещё нужна пружина.
+                                        lensX.animateTo(desiredX, spring(dampingRatio = 0.7f, stiffness = 600f))
                                     }
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 },
@@ -440,52 +501,35 @@ private fun A4BottomNav(
                                         haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
                                     }
                                     val speed = abs(change.position.x - (lastFingerX ?: change.position.x))
-                                    lensStretch = (1f + speed / itemWPx * 0.30f).coerceAtMost(1.14f)
+                                    lensStretch = (1f + speed / itemWPx * 0.22f).coerceAtMost(1.10f)
                                     lastFingerX = change.position.x
                                     val desiredX = (change.position.x - itemWPx / 2f)
                                         .coerceIn(0f, size.width - itemWPx)
-                                    scope.launch {
-                                        lensX.animateTo(
-                                            desiredX,
-                                            spring(
-                                                dampingRatio = 0.78f,
-                                                stiffness = Spring.StiffnessLow,
-                                            ),
-                                        )
-                                    }
+                                    // Пока палец реально двигает линзу, она должна идти с ним
+                                    // один-в-один: пружина на каждое touch-move событие только
+                                    // гонится следом и вечно отстаёт — это и читалось как «лаг»/
+                                    // «топорность». Пружины остаются только на старте и финале.
+                                    scope.launch { lensX.snapTo(desiredX) }
                                     change.consume()
                                 },
                                 onDragEnd = {
+                                    // Переключаем вкладку сразу, а не после того как долетит
+                                    // анимация линзы: раньше onSelect ждал animateTo на общем
+                                    // Animatable, а следующий жест перезапускал ту же анимацию
+                                    // и отменял корутину до onSelect — свайп то срабатывал,
+                                    // то нет, то с задержкой.
                                     val target = dragTarget ?: current
                                     lensStretch = 1f
                                     lastFingerX = null
-                                    scope.launch {
-                                        lensX.animateTo(
-                                            target.ordinal * itemWPx,
-                                            spring(
-                                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                stiffness = Spring.StiffnessLow,
-                                            ),
-                                        )
-                                        if (target != current) onSelect(target)
-                                        dragTarget = null
-                                        lensInMotion = false
-                                    }
+                                    dragTarget = null
+                                    lensInMotion = false
+                                    if (target != current) onSelect(target)
                                 },
                                 onDragCancel = {
                                     lensStretch = 1f
                                     lastFingerX = null
-                                    scope.launch {
-                                        lensX.animateTo(
-                                            current.ordinal * itemWPx,
-                                            spring(
-                                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                stiffness = Spring.StiffnessLow,
-                                            ),
-                                        )
-                                        dragTarget = null
-                                        lensInMotion = false
-                                    }
+                                    dragTarget = null
+                                    lensInMotion = false
                                 },
                             )
                         },
@@ -554,7 +598,7 @@ private fun TabIcon(tab: A4Tab, color: Color) {
  * красная, когда включён.
  */
 @Composable
-internal fun A4Backdrop(active: Boolean = false) {
+internal fun A4Backdrop(active: Boolean = false, showDots: Boolean = true) {
     val infinite = rememberInfiniteTransition(label = "backdrop")
     val t by infinite.animateFloat(
         initialValue = 0f,
@@ -593,19 +637,21 @@ internal fun A4Backdrop(active: Boolean = false) {
             style = Stroke(1.5f.dp.toPx()),
         )
 
-        val step = 18.dp.toPx()
-        val dotColor = lerp(A4TextMuted, A4Red, warm)
-        val dotDrift = if (active) drift * 6f else 0f
-        for (i in 0..2) {
-            for (j in 0..2) {
-                val wave = (sin(dotPulse * 2f * PI - (i + j) * 0.8f).toFloat() + 1f) / 2f
-                val pulse = if (active) wave else 0f
-                drawCircle(
-                    color = dotColor,
-                    radius = (2.5f + pulse * 1.2f).dp.toPx(),
-                    center = Offset(w * 0.78f + i * step, h * 0.10f + j * step + dotDrift),
-                    alpha = 0.28f + pulse * 0.52f,
-                )
+        if (showDots) {
+            val step = 18.dp.toPx()
+            val dotColor = lerp(A4TextMuted, A4Red, warm)
+            val dotDrift = if (active) drift * 6f else 0f
+            for (i in 0..2) {
+                for (j in 0..2) {
+                    val wave = (sin(dotPulse * 2f * PI - (i + j) * 0.8f).toFloat() + 1f) / 2f
+                    val pulse = if (active) wave else 0f
+                    drawCircle(
+                        color = dotColor,
+                        radius = (2.5f + pulse * 1.2f).dp.toPx(),
+                        center = Offset(w * 0.78f + i * step, h * 0.10f + j * step + dotDrift),
+                        alpha = 0.28f + pulse * 0.52f,
+                    )
+                }
             }
         }
 
@@ -654,8 +700,6 @@ private fun HomeTab(
             .padding(horizontal = 20.dp),
     ) {
         Spacer(Modifier.height(8.dp))
-        A4SectionLabel("СТАТУС ЗАЩИТЫ")
-        Spacer(Modifier.height(6.dp))
         StatusHeadline(conn)
 
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -703,6 +747,7 @@ private fun HomeTab(
         ServerCard(
             serverName = serverName,
             pingMs = server?.testDelayMillis ?: 0L,
+            shimmer = conn == A4ConnState.Connected,
             onClick = onOpenServers,
         )
 
@@ -711,12 +756,13 @@ private fun HomeTab(
             TrafficCard(subscription)
         }
 
-        Spacer(Modifier.height(24.dp))
+        val navInsetBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        Spacer(Modifier.height(24.dp + A4BottomNavClearance + navInsetBottom))
     }
 }
 
 /**
- * Минимальная карточка остатка трафика на Главной:
+ * Отдельная карточка остатка трафика на Главной:
  *   339 ГБ  осталось                 37 дней ⏳
  *   ███████░░░░░░░░░░░░░░░░░░░░  15%
  * При безлимите — просто «Безлимит» без полосы.
@@ -758,7 +804,12 @@ private fun TrafficCard(sub: SubscriptionItem) {
                         color = tint,
                     )
                     Spacer(Modifier.width(5.dp))
-                    ClockIcon(color = tint)
+                    Icon(
+                        imageVector = Icons.Rounded.CalendarMonth,
+                        contentDescription = null,
+                        tint = tint,
+                        modifier = Modifier.size(16.dp),
+                    )
                 }
             }
         }
@@ -871,34 +922,40 @@ private fun StatsRow(downBps: () -> Long, upBps: () -> Long, sessionSeconds: () 
     val (downValue, downUnit) = speedParts(downBps())
     val (upValue, upUnit) = speedParts(upBps())
     val (sessionValue, sessionUnit) = sessionParts(sessionSeconds())
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        StatTile("ЗАГРУЗКА", downValue, downUnit, Modifier.weight(1f))
-        StatTile("ОТДАЧА", upValue, upUnit, Modifier.weight(1f))
-        StatTile("СЕССИЯ", sessionValue, sessionUnit, Modifier.weight(1f))
+    // Раньше каждая цифра сидела в своей карточке с рамкой и фоном — три бордера
+    // подряд визуально тяжелят строку и съедают высоту. Теперь это просто три
+    // колонки с тонкими вертикальными разделителями между ними.
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        StatCell(Icons.Rounded.ArrowDownward, downValue, downUnit, Modifier.weight(1f))
+        VerticalDivider(color = A4Border, modifier = Modifier.height(30.dp))
+        StatCell(Icons.Rounded.ArrowUpward, upValue, upUnit, Modifier.weight(1f))
+        VerticalDivider(color = A4Border, modifier = Modifier.height(30.dp))
+        StatCell(Icons.Rounded.Timer, sessionValue, sessionUnit, Modifier.weight(1f))
     }
 }
 
 @Composable
-private fun StatTile(label: String, value: String, unit: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(A4PaperCard)
-            .border(1.dp, A4Border, RoundedCornerShape(12.dp))
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp, fontSize = 9.sp),
-            color = A4TextMuted,
+private fun StatCell(icon: ImageVector, value: String, unit: String, modifier: Modifier = Modifier) {
+    Row(modifier, horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.Bottom) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = A4TextMuted,
+            modifier = Modifier.size(14.dp).padding(bottom = 2.dp),
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.width(6.dp))
         Text(
             value,
-            style = MaterialTheme.typography.titleMedium.copy(fontSize = 19.sp, fontWeight = FontWeight.ExtraBold),
+            style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, fontWeight = FontWeight.ExtraBold),
             color = A4Ink,
         )
-        Text(unit, style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp), color = A4TextMuted)
+        Spacer(Modifier.width(3.dp))
+        Text(
+            unit,
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+            color = A4TextMuted,
+            modifier = Modifier.padding(bottom = 1.dp),
+        )
     }
 }
 
@@ -906,6 +963,7 @@ private fun StatTile(label: String, value: String, unit: String, modifier: Modif
 private fun ServerCard(
     serverName: String,
     pingMs: Long,
+    shimmer: Boolean,
     onClick: () -> Unit,
 ) {
     Row(
@@ -921,7 +979,12 @@ private fun ServerCard(
         Column(Modifier.weight(1f)) {
             A4SectionLabel("СЕРВЕР")
             Spacer(Modifier.height(4.dp))
-            Text(serverName, style = MaterialTheme.typography.titleMedium, color = A4Ink)
+            ShimmerText(
+                text = serverName,
+                style = MaterialTheme.typography.titleMedium,
+                color = A4Ink,
+                shimmer = shimmer,
+            )
         }
         if (pingMs > 0) {
             Column(horizontalAlignment = Alignment.End) {
@@ -962,62 +1025,100 @@ private fun ServersTab(
     servers: List<ServersCache>,
     selectedGuid: String?,
     isTesting: Boolean,
+    connected: Boolean,
     onSelectServer: (String) -> Unit,
     onTestPing: () -> Unit,
+    animateEntrance: Boolean,
+    onEntranceShown: () -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
+    fun refreshSubscription() {
+        if (isRefreshing) return
+        scope.launch {
+            isRefreshing = true
+            try {
+                withContext(Dispatchers.IO) {
+                    AngConfigManager.updateConfigViaSubAll()
+                }
+                mainViewModel.setupGroupTab(forceRefresh = true).join()
+            } finally {
+                isRefreshing = false
+            }
+        }
+    }
+
+    // Один плавный заход всего списка вместо каскада по каждой строке — тот
+    // каскад переигрывался при каждом возврате на вкладку и с длинным списком
+    // ощутимо копил задержку. Проигрываем один раз за сессию экрана.
+    val density = LocalDensity.current
+    val entranceOffsetPx = remember { with(density) { 20.dp.toPx() } }
+    val entranceProgress = remember { Animatable(if (animateEntrance) 0f else 1f) }
+    LaunchedEffect(Unit) {
+        if (animateEntrance) {
+            entranceProgress.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
+            onEntranceShown()
+        }
+    }
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
-        onRefresh = {
-            if (!isRefreshing) {
-                scope.launch {
-                    isRefreshing = true
-                    try {
-                        withContext(Dispatchers.IO) {
-                            AngConfigManager.updateConfigViaSubAll()
-                        }
-                        mainViewModel.setupGroupTab(forceRefresh = true).join()
-                    } finally {
-                        isRefreshing = false
-                    }
-                }
-            }
-        },
-        modifier = Modifier.fillMaxSize(),
+        onRefresh = ::refreshSubscription,
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                alpha = entranceProgress.value
+                translationY = (1f - entranceProgress.value) * entranceOffsetPx
+            },
     ) {
+        val navInsetBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
+            contentPadding = PaddingValues(
+                start = 20.dp,
+                end = 20.dp,
+                bottom = 24.dp + A4BottomNavClearance + navInsetBottom,
+            ),
         ) {
             item {
                 Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Column(Modifier.weight(1f)) {
-                        A4SectionLabel("СЕРВЕРЫ")
-                        Spacer(Modifier.height(6.dp))
-                        Text("Выбери локацию", style = MaterialTheme.typography.headlineMedium, color = A4Ink)
-                    }
-                    PingTestButton(isTesting) {
+                Text("Выбери локацию", style = MaterialTheme.typography.headlineMedium, color = A4Ink)
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ActionPillButton(
+                        icon = Icons.Rounded.Speed,
+                        label = "ПИНГ",
+                        busyLabel = "МЕРИМ…",
+                        isBusy = isTesting,
+                        modifier = Modifier.weight(1f),
+                    ) {
                         haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
                         onTestPing()
+                    }
+                    ActionPillButton(
+                        icon = Icons.Rounded.Refresh,
+                        label = "ОБНОВИТЬ",
+                        busyLabel = "ОБНОВЛЯЕМ…",
+                        isBusy = isRefreshing,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                        refreshSubscription()
                     }
                 }
                 Spacer(Modifier.height(16.dp))
             }
-            itemsIndexed(servers, key = { _, s -> s.guid }) { index, server ->
-                A4StaggerIn(index) {
-                    A4ServerRow(
-                        server = server,
-                        selected = server.guid == selectedGuid,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.Confirm)
-                            onSelectServer(server.guid)
-                        },
-                    )
-                }
+            itemsIndexed(servers, key = { _, s -> s.guid }) { _, server ->
+                A4ServerRow(
+                    server = server,
+                    selected = server.guid == selectedGuid,
+                    connected = connected,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                        onSelectServer(server.guid)
+                    },
+                )
                 Spacer(Modifier.height(10.dp))
             }
             if (servers.isEmpty()) {
@@ -1029,24 +1130,33 @@ private fun ServersTab(
     }
 }
 
+/** Тёмная пилюля-кнопка с иконкой: «Пинг» и «Обновить» на вкладке серверов. */
 @Composable
-private fun PingTestButton(isTesting: Boolean, onClick: () -> Unit) {
-    val spin by rememberInfiniteTransition(label = "pingTest").animateFloat(
+private fun ActionPillButton(
+    icon: ImageVector,
+    label: String,
+    busyLabel: String,
+    isBusy: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val spin by rememberInfiniteTransition(label = "actionPillSpin").animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
-        label = "pingSpin",
+        label = "actionPillSpinAngle",
     )
     Row(
-        Modifier
-            .springClick(scale = 0.95f) { if (!isTesting) onClick() }
-            .clip(RoundedCornerShape(8.dp))
+        modifier
+            .springClick(scale = 0.97f) { if (!isBusy) onClick() }
+            .clip(RoundedCornerShape(10.dp))
             .background(A4Ink)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (isTesting) {
-            Canvas(Modifier.size(12.dp)) {
+        if (isBusy) {
+            Canvas(Modifier.size(14.dp)) {
                 rotate(spin) {
                     drawArc(
                         color = Color.White,
@@ -1057,10 +1167,12 @@ private fun PingTestButton(isTesting: Boolean, onClick: () -> Unit) {
                     )
                 }
             }
-            Spacer(Modifier.width(8.dp))
+        } else {
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
         }
+        Spacer(Modifier.width(7.dp))
         Text(
-            if (isTesting) "МЕРИМ…" else "ПИНГ",
+            if (isBusy) busyLabel else label,
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 1.5.sp),
             color = Color.White,
         )
@@ -1068,7 +1180,7 @@ private fun PingTestButton(isTesting: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun A4ServerRow(server: ServersCache, selected: Boolean, onClick: () -> Unit) {
+private fun A4ServerRow(server: ServersCache, selected: Boolean, connected: Boolean, onClick: () -> Unit) {
     val borderColor by animateColorAsState(
         targetValue = if (selected) A4Red else A4Border,
         animationSpec = tween(250),
@@ -1091,13 +1203,14 @@ private fun A4ServerRow(server: ServersCache, selected: Boolean, onClick: () -> 
             .padding(horizontal = 16.dp, vertical = 22.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            profile.remarks.ifBlank { "Сервер" },
+        ShimmerText(
+            text = profile.remarks.ifBlank { "Сервер" },
+            style = MaterialTheme.typography.titleMedium,
+            color = A4Ink,
+            shimmer = selected && connected,
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .padding(end = 96.dp),
-            style = MaterialTheme.typography.titleMedium,
-            color = A4Ink,
         )
         Row(
             modifier = Modifier.align(Alignment.CenterEnd),
@@ -1166,7 +1279,10 @@ private fun CheckMark() {
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun SubscriptionEntry(isLoading: Boolean, onUseFree: () -> Unit) {
+private fun SubscriptionEntry(
+    isLoading: Boolean,
+    onImportSubscription: (String) -> Unit,
+) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
@@ -1201,12 +1317,15 @@ private fun SubscriptionEntry(isLoading: Boolean, onUseFree: () -> Unit) {
             A4StaggerIn(1) {
                 Text(
                     buildAnnotatedString {
-                        withStyle(SpanStyle(color = A4Red)) { append("a4") }
+                        append("a")
+                        withStyle(SpanStyle(color = A4Red)) { append("4") }
                         append("vpn")
                     },
-                    style = MaterialTheme.typography.headlineMedium.copy(
+                    style = TextStyle(
+                        fontFamily = A4Unbounded,
+                        fontWeight = FontWeight.ExtraBold,
                         fontSize = 30.sp,
-                        fontWeight = FontWeight.Black,
+                        letterSpacing = (-0.3).sp,
                     ),
                     color = A4Ink,
                 )
@@ -1214,8 +1333,6 @@ private fun SubscriptionEntry(isLoading: Boolean, onUseFree: () -> Unit) {
             Spacer(Modifier.height(36.dp))
             A4StaggerIn(2) {
                 Column(Modifier.fillMaxWidth()) {
-                    A4SectionLabel("ПОДКЛЮЧЕНИЕ")
-                    Spacer(Modifier.height(6.dp))
                     Text(
                         "Вход через Telegram",
                         style = MaterialTheme.typography.headlineMedium,
@@ -1235,12 +1352,9 @@ private fun SubscriptionEntry(isLoading: Boolean, onUseFree: () -> Unit) {
             }
             Spacer(Modifier.height(12.dp))
             A4StaggerIn(4) {
-                FreeEntryButton(
+                SubscriptionLinkEntry(
                     busy = isLoading,
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onUseFree()
-                    },
+                    onSubmit = onImportSubscription,
                 )
             }
             Spacer(Modifier.height(32.dp))
@@ -1248,32 +1362,61 @@ private fun SubscriptionEntry(isLoading: Boolean, onUseFree: () -> Unit) {
     }
 }
 
-/**
- * Вход без ключа: подключает бесплатный профиль — одна локация, через которую
- * ходит только Telegram. Подписку с ключом можно добавить позже, из настроек.
- */
 @Composable
-private fun FreeEntryButton(busy: Boolean, onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .springClick(scale = 0.97f) { if (!busy) onClick() }
-            .clip(RoundedCornerShape(10.dp))
-            .border(1.dp, A4Border, RoundedCornerShape(10.dp))
-            .padding(vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
+private fun SubscriptionLinkEntry(busy: Boolean, onSubmit: (String) -> Unit) {
+    var subscriptionUrl by remember { mutableStateOf("") }
+    val haptic = LocalHapticFeedback.current
+    val canSubmit = subscriptionUrl.isNotBlank() && !busy
+
+    fun submit() {
+        if (!canSubmit) return
+        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+        onSubmit(subscriptionUrl.trim())
+    }
+
+    Column(Modifier.fillMaxWidth()) {
         Text(
-            "ВОЙТИ БЕЗ КЛЮЧА",
-            style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, letterSpacing = 1.sp),
+            "Уже есть ключ?",
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
             color = A4Ink,
         )
-        Spacer(Modifier.height(3.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
-            "бесплатно, работает только Telegram",
+            "Вставь ключ или ссылку из Telegram — подключим её прямо здесь.",
             style = MaterialTheme.typography.bodySmall,
             color = A4TextMuted,
         )
+        Spacer(Modifier.height(10.dp))
+        OutlinedTextField(
+            value = subscriptionUrl,
+            onValueChange = { subscriptionUrl = it },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !busy,
+            singleLine = true,
+            label = { Text("Ссылка подписки") },
+            placeholder = { Text("https://…") },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Uri,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(onDone = { submit() }),
+        )
+        Spacer(Modifier.height(10.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .springClick(scale = 0.97f) { submit() }
+                .clip(RoundedCornerShape(10.dp))
+                .background(if (canSubmit) A4Ink else A4TextMuted)
+                .padding(vertical = 14.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                if (busy) "ПРОВЕРЯЕМ КЛЮЧ…" else "ПОДКЛЮЧИТЬ ПО ССЫЛКЕ",
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp, letterSpacing = 0.7.sp),
+                color = Color.White,
+            )
+        }
     }
 }
 

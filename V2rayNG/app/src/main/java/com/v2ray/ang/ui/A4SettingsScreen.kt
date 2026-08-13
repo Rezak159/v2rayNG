@@ -11,9 +11,12 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -91,16 +94,27 @@ private fun TelegramIcon(modifier: Modifier, tint: Color) {
 fun A4SettingsScreen(
     onBackClick: () -> Unit,
     onOpenLogcat: () -> Unit,
+    onOpenPerAppProxy: () -> Unit,
 ) {
     A4Theme {
-        A4SettingsContent(embedded = false, onBackClick = onBackClick, onOpenLogcat = onOpenLogcat)
+        A4SettingsContent(
+            embedded = false,
+            onBackClick = onBackClick,
+            onOpenLogcat = onOpenLogcat,
+            onOpenPerAppProxy = onOpenPerAppProxy,
+        )
     }
 }
 
 /** Встраиваемый вариант (вкладка нижней навигации): без темы, отступа и кнопки «назад». */
 @Composable
-fun A4SettingsTab(onOpenLogcat: () -> Unit) {
-    A4SettingsContent(embedded = true, onBackClick = {}, onOpenLogcat = onOpenLogcat)
+fun A4SettingsTab(onOpenLogcat: () -> Unit, onOpenPerAppProxy: () -> Unit) {
+    A4SettingsContent(
+        embedded = true,
+        onBackClick = {},
+        onOpenLogcat = onOpenLogcat,
+        onOpenPerAppProxy = onOpenPerAppProxy,
+    )
 }
 
 @Composable
@@ -108,6 +122,7 @@ private fun A4SettingsContent(
     embedded: Boolean,
     onBackClick: () -> Unit,
     onOpenLogcat: () -> Unit,
+    onOpenPerAppProxy: () -> Unit,
 ) {
     if (!embedded) BackHandler(onBack = onBackClick)
 
@@ -206,6 +221,12 @@ private fun A4SettingsContent(
                         showSpeed = it
                     },
                 )
+                HorizontalDivider(color = A4Border)
+                SettingsLinkRow(
+                    title = "Исключения по приложениям",
+                    description = "какие приложения не пускать через VPN",
+                    onClick = onOpenPerAppProxy,
+                )
             }
 
             Spacer(Modifier.height(20.dp))
@@ -278,7 +299,19 @@ private fun A4SettingsContent(
                     color = Color.White,
                 )
             }
-            Spacer(Modifier.height(24.dp))
+            // Встроенная вкладка: A4BottomNav плавает поверх контента, а не в потоке
+            // разметки (см. A4MainScreen), поэтому список должен сам резервировать
+            // отступ под неё — иначе последние строки не долистать.
+            if (embedded) {
+                Spacer(
+                    Modifier.height(
+                        24.dp + A4BottomNavClearance +
+                            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                    ),
+                )
+            } else {
+                Spacer(Modifier.height(24.dp))
+            }
         }
     }
 }

@@ -10,11 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Schedule
-import androidx.compose.material3.Icon
 import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.handler.MmkvManager
 import java.text.SimpleDateFormat
@@ -123,12 +119,3 @@ internal fun A4TrafficBar(fraction: Float, modifier: Modifier = Modifier) {
         )
     }
 }
-
-/** Готовая векторная иконка часов с циферблатом. */
-@Composable
-internal fun ClockIcon(color: Color, modifier: Modifier = Modifier) = Icon(
-    imageVector = Icons.Rounded.Schedule,
-    contentDescription = null,
-    tint = color,
-    modifier = modifier.size(16.dp),
-)

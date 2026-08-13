@@ -3,9 +3,11 @@ package com.v2ray.ang.ui
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.util.Base64
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
@@ -272,8 +274,48 @@ class MainActivity : HelperBaseComponentActivity() {
             onConnectionClick = ::handleFabAction,
             onSelectServer = ::setSelectServer,
             onOpenLogcat = { navigateTo("logcat") },
-            onUseFree = { importBatchConfig(AppConfig.FREE_SUB_URL) },
+            onOpenPerAppProxy = { navigateTo("per_app_proxy") },
+            onImportSubscription = ::importSubscriptionFromEntry,
         )
+    }
+
+    /** Imports either a direct subscription URL or the sign-in link copied from the bot. */
+    private fun importSubscriptionFromEntry(value: String) {
+        val raw = value.trim()
+        val uri = Uri.parse(raw)
+        val subscriptionUrl = when {
+            uri.host == AppConfig.APP_LINK_HOST && uri.path?.startsWith(AppConfig.APP_LINK_SUB_PATH) == true -> {
+                val payload = uri.path
+                    ?.removePrefix(AppConfig.APP_LINK_SUB_PATH)
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: return toastError(R.string.toast_failure)
+                try {
+                    val flags = Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
+                    String(Base64.decode(payload, flags), Charsets.UTF_8)
+                } catch (e: IllegalArgumentException) {
+                    LogUtil.e(AppConfig.TAG, "Malformed subscription app link", e)
+                    return toastError(R.string.toast_failure)
+                }
+            }
+            else -> raw
+        }
+
+        if (!Utils.isValidSubUrl(subscriptionUrl)) {
+            toastError(R.string.toast_failure)
+            return
+        }
+
+        // Платная подписка на устройстве одна: старую (в т.ч. неудачно закачавшуюся)
+        // подчищаем перед вводом новой ссылки, иначе importUrlAsSubscription молча
+        // откажет в добавлении, пока висит любая нефри-подписка.
+        MmkvManager.decodeSubscriptions()
+            .filter { it.subscription.url != AppConfig.FREE_SUB_URL }
+            .forEach {
+                MmkvManager.removeServerViaSubid(it.guid)
+                MmkvManager.removeSubscription(it.guid)
+            }
+
+        importBatchConfig(subscriptionUrl)
     }
 
     fun getShareQRCodeBitmap(guid: String): Bitmap? = AngConfigManager.share2QRCode(guid)

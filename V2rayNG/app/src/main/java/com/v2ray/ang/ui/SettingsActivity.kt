@@ -15,6 +15,7 @@ class SettingsActivity : BaseComponentActivity() {
         A4SettingsScreen(
             onBackClick = { finish() },
             onOpenLogcat = { startActivity(Intent(this, LogcatActivity::class.java)) },
+            onOpenPerAppProxy = { startActivity(Intent(this, PerAppProxyActivity::class.java)) },
         )
     }
 }

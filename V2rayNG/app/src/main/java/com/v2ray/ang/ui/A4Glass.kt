@@ -132,8 +132,15 @@ internal fun Modifier.a4LiquidGlass(
             backdrop.blurred?.let { layer ->
                 translate(-position.x, -position.y) { drawLayer(layer) }
             }
-            val top = if (blurSupported) 0.30f else 0.78f
-            val bottom = if (blurSupported) 0.10f else 0.64f
+            // Раньше низ капсулы держал всего ~8% белого поверх блюра — почти голый
+            // фон. Из-за этого капсула выглядела то «почти прозрачной» (пустой низ
+            // экрана позади неё), то «слишком матовой» (плотный список карточек
+            // позади) — визуально скакало вместе со скроллом контента, хотя сама
+            // альфа никогда от скролла не зависела. Подняли пол и сузили разброс
+            // верх/низ, чтобы материал читался ровно вне зависимости от того, что
+            // под ним прокручивается.
+            val top = if (blurSupported) 0.40f else 0.82f
+            val bottom = if (blurSupported) 0.26f else 0.70f
             drawRect(
                 Brush.verticalGradient(
                     listOf(
