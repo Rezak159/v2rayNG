@@ -16,9 +16,9 @@ import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.dto.entities.RulesetItem
 import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.enums.EConfigType
-import com.v2ray.ang.enums.Language
 import com.v2ray.ang.enums.RoutingType
 import com.v2ray.ang.enums.VpnInterfaceAddressConfig
+import com.v2ray.ang.extension.moveItem
 import com.v2ray.ang.handler.MmkvManager.decodeAllServerList
 import com.v2ray.ang.handler.MmkvManager.decodeServerConfig
 import com.v2ray.ang.handler.MmkvManager.decodeSubsList
@@ -30,8 +30,6 @@ import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
 import java.io.File
 import java.io.FileOutputStream
-import java.util.Collections
-import java.util.Locale
 import kotlin.random.Random
 
 object SettingsManager {
@@ -62,12 +60,11 @@ object SettingsManager {
     /**
      * Get preset routing rulesets.
      * @param context The application context.
-     * @param index The index of the routing type.
+     * @param type The routing preset type.
      * @return A mutable list of RulesetItem.
      */
-    private fun getPresetRoutingRulesets(context: Context, index: Int = 0): MutableList<RulesetItem>? {
-        val fileName = RoutingType.fromIndex(index).fileName
-        val assets = Utils.readTextFromAssets(context, fileName)
+    private fun getPresetRoutingRulesets(context: Context, type: RoutingType = RoutingType.WHITE): MutableList<RulesetItem>? {
+        val assets = Utils.readTextFromAssets(context, type.fileName)
         if (TextUtils.isEmpty(assets)) {
             return null
         }
@@ -78,10 +75,10 @@ object SettingsManager {
     /**
      * Reset routing rulesets from presets.
      * @param context The application context.
-     * @param index The index of the routing type.
+     * @param type The routing preset type.
      */
-    fun resetRoutingRulesetsFromPresets(context: Context, index: Int) {
-        val rulesetList = getPresetRoutingRulesets(context, index) ?: return
+    fun resetRoutingRulesetsFromPresets(context: Context, type: RoutingType) {
+        val rulesetList = getPresetRoutingRulesets(context, type) ?: return
         resetRoutingRulesetsCommon(rulesetList)
     }
 
@@ -202,32 +199,6 @@ object SettingsManager {
             it.domain?.contains(GEOSITE_PRIVATE) == true || it.ip?.contains(GEOIP_PRIVATE) == true
         }
         return exist == true
-    }
-
-    /**
-     * Swap routing rulesets.
-     * @param fromPosition The position to swap from.
-     * @param toPosition The position to swap to.
-     */
-    fun swapRoutingRuleset(fromPosition: Int, toPosition: Int) {
-        val rulesetList = MmkvManager.decodeRoutingRulesets()
-        if (rulesetList.isNullOrEmpty()) return
-
-        Collections.swap(rulesetList, fromPosition, toPosition)
-        MmkvManager.encodeRoutingRulesets(rulesetList)
-    }
-
-    /**
-     * Swap subscriptions.
-     * @param fromPosition The position to swap from.
-     * @param toPosition The position to swap to.
-     */
-    fun swapSubscriptions(fromPosition: Int, toPosition: Int) {
-        val subsList = decodeSubsList()
-        if (subsList.isEmpty()) return
-
-        Collections.swap(subsList, fromPosition, toPosition)
-        MmkvManager.encodeSubsList(subsList)
     }
 
     /**
@@ -416,22 +387,6 @@ object SettingsManager {
     }
 
     /**
-     * Get the locale.
-     * @return The locale.
-     */
-    fun getLocale(): Locale {
-        val langCode =
-            MmkvManager.decodeSettingsString(AppConfig.PREF_LANGUAGE) ?: Language.AUTO.code
-        val language = Language.fromCode(langCode)
-
-        return when (language) {
-            Language.AUTO -> Utils.getSysLocale()
-            Language.ENGLISH -> Locale.ENGLISH
-            Language.RUSSIAN -> Locale.forLanguageTag("ru")
-        }
-    }
-
-    /**
      * Retrieves the currently selected VPN interface address configuration.
      * This method reads the user's preference for VPN interface addressing and returns
      * the corresponding configuration containing IPv4 and IPv6 addresses.
@@ -508,8 +463,6 @@ object SettingsManager {
         ensureDefaultValue(AppConfig.PREF_SOCKS_PORT, AppConfig.PORT_SOCKS)
         ensureDefaultValue(AppConfig.PREF_REMOTE_DNS, AppConfig.DNS_PROXY)
         ensureDefaultValue(AppConfig.PREF_DOMESTIC_DNS, AppConfig.DNS_DIRECT)
-        // a4vpn: RoscomVPN routing relies on geoip rules, so unmatched domains must be resolved
-        ensureDefaultValue(AppConfig.PREF_ROUTING_DOMAIN_STRATEGY, "IPIfNonMatch")
         ensureDefaultValue(AppConfig.PREF_DELAY_TEST_URL, AppConfig.DELAY_TEST_URL)
         ensureDefaultValue(AppConfig.PREF_IP_API_URL, AppConfig.IP_API_URL)
         ensureDefaultValue(AppConfig.PREF_HEV_TUNNEL_RW_TIMEOUT, AppConfig.HEVTUN_RW_TIMEOUT)
@@ -518,6 +471,11 @@ object SettingsManager {
         ensureDefaultValue(AppConfig.PREF_FRAGMENT_LENGTH, "50-100")
         ensureDefaultValue(AppConfig.PREF_FRAGMENT_INTERVAL, "10-20")
         ensureDefaultValue(AppConfig.PREF_FRAGMENT_MAXSPLIT, "10")
+        ensureDefaultValue(AppConfig.PREF_OBSERVATORY_LEAST_PING_INTERVAL, AppConfig.OBSERVATORY_LEAST_PING_INTERVAL)
+        ensureDefaultValue(AppConfig.PREF_OBSERVATORY_LEAST_LOAD_INTERVAL, AppConfig.OBSERVATORY_LEAST_LOAD_INTERVAL)
+        ensureDefaultValue(AppConfig.PREF_OBSERVATORY_LEAST_LOAD_METHOD, AppConfig.OBSERVATORY_LEAST_LOAD_METHOD)
+        ensureDefaultValue(AppConfig.PREF_OBSERVATORY_LEAST_LOAD_SAMPLING, AppConfig.OBSERVATORY_LEAST_LOAD_SAMPLING)
+        ensureDefaultValue(AppConfig.PREF_OBSERVATORY_LEAST_LOAD_TIMEOUT, AppConfig.OBSERVATORY_LEAST_LOAD_TIMEOUT)
     }
 
     private fun ensureDefaultValue(key: String, default: String) {
@@ -613,10 +571,10 @@ object SettingsManager {
             )
             encodeSubscription(DEFAULT_SUBSCRIPTION_ID, defaultSub)
 
-            // Move top
+            // Move to the top
             val subsList = decodeSubsList()
-            if (subsList.count() > 1) {
-                swapSubscriptions(0, subsList.count() - 1)
+            if (subsList.moveItem(subsList.lastIndex, 0)) {
+                MmkvManager.encodeSubsList(subsList)
             }
         }
     }

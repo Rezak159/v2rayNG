@@ -529,7 +529,8 @@ object AngConfigManager {
             config.description = generateDescription(config)
 
             if (str.startsWith(AppConfig.V2RAYNFMTS, ignoreCase = true)
-                && config.policyGroupSubscriptionId == "self") {
+                && config.policyGroupSubscriptionId == "self"
+            ) {
                 config.policyGroupSubscriptionId = subid
             }
 
@@ -589,6 +590,7 @@ object AngConfigManager {
             }
             LogUtil.i(AppConfig.TAG, url)
             val userAgent = it.subscription.userAgent
+            val requestHeaders = it.subscription.requestHeaders
             val proxyUsername = SettingsManager.getSocksUsername()
             val proxyPassword = SettingsManager.getSocksPassword()
 
@@ -599,6 +601,7 @@ object AngConfigManager {
                     UrlContentRequest(
                         url = url,
                         userAgent = userAgent,
+                        requestHeaders = requestHeaders,
                         timeout = 15000,
                         httpPort = httpPort,
                         proxyUsername = proxyUsername,
@@ -616,7 +619,8 @@ object AngConfigManager {
                     val (body, respHeaders) = HttpUtil.getUrlContentWithHeaders(
                         UrlContentRequest(
                             url = url,
-                            userAgent = userAgent
+                            userAgent = userAgent,
+                            requestHeaders = requestHeaders
                         )
                     )
                     headers = respHeaders
@@ -662,6 +666,41 @@ object AngConfigManager {
             LogUtil.e(AppConfig.TAG, "Failed to update config via subscription", e)
             return SubscriptionUpdateResult(failureCount = 1)
         }
+    }
+
+    /**
+     * Removes invalid server configurations for a subscription.
+     *
+     * @param subId The subscription ID.
+     */
+    fun removeInvalidServer(subId: String) {
+        val serverList = MmkvManager.decodeServerList(subId)
+        val invalidServers = serverList.filter {
+            val aff = MmkvManager.decodeServerAffiliationInfo(it)
+            aff != null && aff.testDelayMillis < 0L
+        }
+        MmkvManager.removeServers(invalidServers, subId)
+    }
+
+    /**
+     * Sorts servers by test results for a subscription.
+     *
+     * @param subId The subscription ID.
+     */
+    fun sortByTestResultsForSub(subId: String) {
+        val serverList = MmkvManager.decodeServerList(subId)
+        if (serverList.isEmpty()) return
+
+        val sorted = serverList
+            .map { guid ->
+                val delay =
+                    MmkvManager.decodeServerAffiliationInfo(guid)?.testDelayMillis ?: 0L
+                guid to if (delay <= 0L) Long.MAX_VALUE else delay
+            }
+            .sortedBy { it.second }
+            .map { it.first }
+            .toMutableList()
+        MmkvManager.encodeServerList(sorted, subId)
     }
 
     /**

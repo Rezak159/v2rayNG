@@ -10,18 +10,28 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.a4vpn.app.alpha"
+        applicationId = "com.v2ray.ang"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.2-alpha"
+        versionCode = 743
+        versionName = "2.3.3"
 
+        val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {
             abi {
                 isEnable = true
                 reset()
-                include("arm64-v8a")
-                isUniversalApk = false
+                if (!abiFilterList.isNullOrEmpty()) {
+                    include(*abiFilterList.toTypedArray())
+                } else {
+                    include(
+                        "arm64-v8a",
+                        "armeabi-v7a",
+                        "x86_64",
+                        "x86"
+                    )
+                }
+                isUniversalApk = abiFilterList.isNullOrEmpty()
             }
         }
 
@@ -36,14 +46,18 @@ android {
                 "proguard-rules.pro"
             )
         }
-        // Временный тип для замера производительности: релизный рантайм
-        // (не debuggable — Compose так работает в 3–5 раз быстрее), но подписан
-        // debug-ключом, поэтому ставится одной командой. Удалить после диагностики.
-        create("perf") {
-            initWith(getByName("release"))
-            signingConfig = signingConfigs.getByName("debug")
-            isDebuggable = false
-            matchingFallbacks += "release"
+    }
+
+    flavorDimensions.add("distribution")
+    productFlavors {
+        create("fdroid") {
+            dimension = "distribution"
+            applicationIdSuffix = ".fdroid"
+            buildConfigField("String", "DISTRIBUTION", "\"F-Droid\"")
+        }
+        create("playstore") {
+            dimension = "distribution"
+            buildConfigField("String", "DISTRIBUTION", "\"Play Store\"")
         }
     }
 
@@ -67,17 +81,66 @@ android {
 
     applicationVariants.all {
         val variant = this
-        variant.outputs
-            .map { it as com.android.build.gradle.internal.api.ApkVariantOutputImpl }
-            .forEach { output ->
-                val abi = output.getFilter("ABI") ?: "universal"
-                output.outputFileName = "A4VPN-Alpha_${variant.versionName}_${abi}.apk"
-            }
+        val isFdroid = variant.productFlavors.any { it.name == "fdroid" }
+        if (isFdroid) {
+            val versionCodes =
+                mapOf(
+                    "armeabi-v7a" to 2, "arm64-v8a" to 1, "x86" to 4, "x86_64" to 3, "universal" to 0
+                )
+
+            variant.outputs
+                .map { it as com.android.build.gradle.internal.api.ApkVariantOutputImpl }
+                .forEach { output ->
+                    val abi = output.getFilter("ABI") ?: "universal"
+                    output.outputFileName = "v2rayNG_${variant.versionName}-fdroid_${abi}.apk"
+                    if (versionCodes.containsKey(abi)) {
+                        output.versionCodeOverride =
+                            (100 * variant.versionCode + versionCodes[abi]!!).plus(5000000)
+                    } else {
+                        return@forEach
+                    }
+                }
+        } else {
+            val versionCodes =
+                mapOf("armeabi-v7a" to 4, "arm64-v8a" to 4, "x86" to 4, "x86_64" to 4, "universal" to 4)
+
+            variant.outputs
+                .map { it as com.android.build.gradle.internal.api.ApkVariantOutputImpl }
+                .forEach { output ->
+                    val abi = if (output.getFilter("ABI") != null)
+                        output.getFilter("ABI")
+                    else
+                        "universal"
+
+                    output.outputFileName = "v2rayNG_${variant.versionName}_${abi}.apk"
+                    if (versionCodes.containsKey(abi)) {
+                        output.versionCodeOverride =
+                            (1000000 * versionCodes[abi]!!).plus(variant.versionCode)
+                    } else {
+                        return@forEach
+                    }
+                }
+        }
     }
 
     buildFeatures {
         buildConfig = true
         compose = true
+    }
+
+    androidResources {
+        generateLocaleConfig = true
+        localeFilters += listOf(
+            "en",
+            "zh-rCN",
+            "zh-rTW",
+            "vi",
+            "ru",
+            "fa",
+            "ar",
+            "bn",
+            "bqi-rIR"
+        )
     }
 
     packaging {
@@ -94,6 +157,7 @@ dependencies {
 
     // AndroidX Core Libraries
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.appcompat)
 
     // Compose Libraries
     implementation(platform(libs.androidx.compose.bom))
@@ -103,9 +167,9 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.coil.compose)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 

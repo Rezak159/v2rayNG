@@ -34,7 +34,11 @@ object CoreConfigManager {
     fun getV2rayConfig(context: Context, guid: String): ConfigResult {
         try {
             val configContext = CoreConfigContextBuilder.build(context, guid)
-                ?: return ConfigResult(status = false, guid = guid, errorMessage = "Failed to build config context")
+                ?: return ConfigResult(
+                    status = false,
+                    guid = guid,
+                    errorMessage = "Failed to build config context"
+                )
             if (configContext.isCustom) {
                 return buildV2rayCustomConfig(configContext)
             }
@@ -57,7 +61,11 @@ object CoreConfigManager {
     fun getV2rayConfig4Speedtest(context: Context, guid: String): ConfigResult {
         try {
             val configContext = CoreConfigContextBuilder.build(context, guid)
-                ?: return ConfigResult(status = false, guid = guid, errorMessage = "Failed to build config context")
+                ?: return ConfigResult(
+                    status = false,
+                    guid = guid,
+                    errorMessage = "Failed to build config context"
+                )
             if (configContext.isCustom) {
                 return buildV2rayCustomConfig(configContext)
             }
@@ -70,7 +78,7 @@ object CoreConfigManager {
             return ConfigResult(
                 status = false,
                 guid = guid,
-                errorMessage = "Failed to get V2ray config for speedtest: ${e.message ?: e.javaClass.simpleName}"
+                errorMessage = "Failed to get V2ray config: ${e.message ?: e.javaClass.simpleName}"
             )
         }
     }
@@ -81,19 +89,40 @@ object CoreConfigManager {
     private fun buildV2rayCustomConfig(configContext: CoreConfigContext): ConfigResult {
         val context = configContext.context
         val raw = MmkvManager.decodeServerRaw(configContext.guid)
-            ?: return ConfigResult(status = false, guid = configContext.guid, errorMessage = "Custom config is empty")
+            ?: return ConfigResult(
+                status = false,
+                guid = configContext.guid,
+                errorMessage = "Failed to build config context, config is empty"
+            )
         val result = ConfigResult(true, configContext.guid, raw)
 
         val json = JsonUtil.parseString(raw)?.takeIf { it.isJsonObject }?.asJsonObject ?: return result
 
-        // a4vpn: an imported config often carries a log section from another platform
-        // (Happ on macOS/Windows), whose file paths do not exist here — the core would
-        // fail to start on them.
+        // Inject or remove traffic statistics configuration based on user preference
+        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_SPEED_ENABLED) == true) {
+            if (!json.has("stats")) {
+                json.add("stats", JsonObject())
+            }
+            if (!json.has("policy")) {
+                val policyObj = JsonObject()
+                val systemObj = JsonObject()
+                systemObj.addProperty("statsOutboundUplink", true)
+                systemObj.addProperty("statsOutboundDownlink", true)
+                policyObj.add("system", systemObj)
+                json.add("policy", policyObj)
+            }
+        } else {
+            json.remove("stats")
+            json.remove("policy")
+        }
+
         json.add("log", JsonObject().apply {
-            addProperty("loglevel", MmkvManager.decodeSettingsString(AppConfig.PREF_LOGLEVEL) ?: "warning")
+            addProperty(
+                "loglevel",
+                MmkvManager.decodeSettingsString(AppConfig.PREF_LOGLEVEL) ?: "warning"
+            )
         })
 
-        // a4vpn: a custom profile keeps its own routing unless it asks for the app's.
         if (usesAppRouting(json)) {
             applyAppRoutingAndDns(configContext, json)
         }
@@ -141,69 +170,58 @@ object CoreConfigManager {
         return JsonUtil.toJsonPretty(json)?.let { ConfigResult(true, configContext.guid, it) } ?: result
     }
 
-    /**
-     * a4vpn: read and strip the profile's own options object.
-     *
-     * A custom config marked with {"a4vpn": {"routing": "app"}} hands routing
-     * and DNS over to the app — that is how the regular locations get the
-     * RoscomVPN ruleset. Special-purpose locations ship without the marker and
-     * keep whatever the server put in them.
-     */
     private fun usesAppRouting(json: JsonObject): Boolean {
         val options = json.remove(AppConfig.CUSTOM_OPTIONS_KEY)
-            ?.takeIf { it.isJsonObject }?.asJsonObject
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
             ?: return false
-        val routing = options.get(AppConfig.CUSTOM_OPTIONS_ROUTING)
+        return options.get(AppConfig.CUSTOM_OPTIONS_ROUTING)
             ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
-            ?.asString
-        return routing == AppConfig.CUSTOM_ROUTING_FROM_APP
+            ?.asString == AppConfig.CUSTOM_ROUTING_FROM_APP
     }
 
-    /**
-     * a4vpn: replace the routing and DNS sections of a custom profile with the
-     * ones built from the app's own settings and rulesets. The profile keeps its
-     * outbounds (servers, keys, transports) untouched; builtin rule tags are
-     * reconciled with the profile's outbound tags.
-     */
     private fun applyAppRoutingAndDns(configContext: CoreConfigContext, json: JsonObject) {
-        val outboundsJson = json.get("outbounds")?.takeIf { it.isJsonArray }?.asJsonArray ?: return
-        val firstOutbound = outboundsJson.firstOrNull()?.takeIf { it.isJsonObject }?.asJsonObject ?: return
+        val outbounds = json.get("outbounds")
+            ?.takeIf { it.isJsonArray }
+            ?.asJsonArray
+            ?: return
+        val primary = outbounds.firstOrNull()
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+            ?: return
 
         val template = initV2rayConfig(configContext)
         configureRouting(configContext, template, emptyMap())
         configureDns(configContext, template, emptyMap())
 
-        // The first outbound is the profile's main proxy by convention. Untagged —
-        // tag it TAG_PROXY; tagged differently — rewrite the rules to its tag.
-        val proxyTag = firstOutbound.get("tag")
+        val proxyTag = primary.get("tag")
             ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
             ?.asString
         if (proxyTag.isNullOrEmpty()) {
-            firstOutbound.addProperty("tag", AppConfig.TAG_PROXY)
+            primary.addProperty("tag", AppConfig.TAG_PROXY)
         } else if (proxyTag != AppConfig.TAG_PROXY) {
             template.routing.rules.forEach { rule ->
-                if (rule.outboundTag == AppConfig.TAG_PROXY) {
-                    rule.outboundTag = proxyTag
-                }
+                if (rule.outboundTag == AppConfig.TAG_PROXY) rule.outboundTag = proxyTag
             }
         }
 
-        // Rules also target direct/block outbounds — add them if the profile has none.
-        val existingTags = outboundsJson.mapNotNull { elem ->
-            elem.takeIf { it.isJsonObject }?.asJsonObject?.get("tag")
+        val existingTags = outbounds.mapNotNull { element ->
+            element.takeIf { it.isJsonObject }
+                ?.asJsonObject
+                ?.get("tag")
                 ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
                 ?.asString
         }.toSet()
         listOf(AppConfig.TAG_DIRECT, AppConfig.TAG_BLOCKED)
-            .filter { it !in existingTags }
+            .filterNot(existingTags::contains)
             .forEach { tag ->
                 template.outbounds.firstOrNull { it.tag == tag }?.let { outbound ->
-                    outboundsJson.add(JsonUtil.parseString(JsonUtil.toJson(outbound)))
+                    outbounds.add(JsonUtil.parseString(JsonUtil.toJson(outbound)))
                 }
             }
 
         json.add("routing", JsonUtil.parseString(JsonUtil.toJson(template.routing)))
-        template.dns?.let { json.add("dns", JsonUtil.parseString(JsonUtil.toJson(it))) }
+        template.dns?.let { dns -> json.add("dns", JsonUtil.parseString(JsonUtil.toJson(dns))) }
     }
 
     /**
@@ -453,10 +471,19 @@ object CoreConfigManager {
         } else {
             "${AppConfig.TAG_BALANCER_PRE}-${resolvedOutbound.tag}"
         }
+        val strategyType = BalancerStrategyType.from(resolvedOutbound.profile.policyGroupType)
+        val fallbackTag = if (strategyType.supportsObservatory && resolvedOutbound.profile.policyGroupTestOutbounds != false) {
+            resolvedOutbound.profile.policyGroupFallbackTag
+                ?.takeIf { it.isNotEmpty() && it != AppConfig.TAG_PROXY }
+            // Xray excludes dead random/roundRobin candidates only when fallbackTag is set;
+            // without this default, an enabled empty field creates no observatory.
+                ?: membersToAdd.first().tag
+        } else null
         val strategy = buildBalancerStrategy(
-            policyGroupType = resolvedOutbound.profile.policyGroupType,
+            strategyType = strategyType,
             selector = listOf(memberTagPrefix),
             balancerTag = balancerTag,
+            fallbackTag = fallbackTag,
         )
         val existingBalancers = v2rayConfig.routing.balancers?.toMutableList() ?: mutableListOf()
         if (existingBalancers.none { it.tag == balancerTag }) {
@@ -982,24 +1009,24 @@ object CoreConfigManager {
         hosts[AppConfig.DNS_SB_DOMAIN] = AppConfig.DNS_SB_ADDRESSES
         hosts[AppConfig.DNS_YANDEX_DOMAIN] = AppConfig.DNS_YANDEX_ADDRESSES
 
-        // a4vpn: pin FNS (nalog.ru) services to their direct IPs, as in
-        // hydraponique/roscomvpn-routing — they break when resolved via proxy
-        hosts["lkfl2.nalog.ru"] = "213.24.64.175"
-        hosts["lknpd.nalog.ru"] = "213.24.64.181"
-
         val userHosts = MmkvManager.decodeSettingsString(AppConfig.PREF_DNS_HOSTS)
         if (userHosts.isNotNullEmpty()) {
             val userHostsMap = userHosts?.split(",").orEmpty()
-                .filter { it.isNotEmpty() }
-                .filter { it.contains(":") }
-                .associate { it.split(":").let { (k, v) -> k to v } }
+                .filter { it.isNotBlank() && it.contains(":") }
+                .associate {
+                    // Use limit = 2 to split only at the first colon.
+                    // This ensures that IPv6 addresses (which contain multiple colons)
+                    // are preserved entirely in the second part.
+                    val parts = it.split(":", limit = 2)
+                    parts[0].trim() to parts[1].trim()
+                }
             hosts.putAll(userHostsMap)
         }
 
         return hosts
     }
 
-    private fun buildDnsCnModeFromRoutingRules(configContext: CoreConfigContext, servers: ArrayList<Any>, domesticDns: List<String>,    ): List<String> {
+    private fun buildDnsCnModeFromRoutingRules(configContext: CoreConfigContext, servers: ArrayList<Any>, domesticDns: List<String>): List<String> {
         val cnRegionFilter = { domain: String ->
             domain.startsWith("geosite:") && (domain.endsWith("-cn") || domain.endsWith("@cn"))
                     || domain == AppConfig.GEOSITE_CN
@@ -1065,6 +1092,7 @@ object CoreConfigManager {
                         domesticDnsTags.add(tag)
                     }
                 }
+
                 AppConfig.TAG_BLOCKED -> Unit
                 else -> {
                     servers.add(
@@ -1263,22 +1291,28 @@ object CoreConfigManager {
      * Build balancer and probe settings from one policy-group strategy value.
      */
     private fun buildBalancerStrategy(
-        policyGroupType: String?,
+        strategyType: BalancerStrategyType,
         selector: List<String>,
         balancerTag: String = AppConfig.TAG_BALANCER,
+        fallbackTag: String? = null,
     ): BalancerStrategy {
         val probeUrl = MmkvManager.decodeSettingsString(AppConfig.PREF_DELAY_TEST_URL) ?: AppConfig.DELAY_TEST_URL
-        val strategyType = BalancerStrategyType.from(policyGroupType)
+        val leastPingInterval = decodeObservatoryDuration(AppConfig.PREF_OBSERVATORY_LEAST_PING_INTERVAL, AppConfig.OBSERVATORY_LEAST_PING_INTERVAL)
+        val leastLoadInterval = decodeObservatoryDuration(AppConfig.PREF_OBSERVATORY_LEAST_LOAD_INTERVAL, AppConfig.OBSERVATORY_LEAST_LOAD_INTERVAL)
+        val leastLoadMethod = MmkvManager.decodeSettingsString(AppConfig.PREF_OBSERVATORY_LEAST_LOAD_METHOD, AppConfig.OBSERVATORY_LEAST_LOAD_METHOD)
+        val leastLoadSampling = decodeObservatorySampling()
+        val leastLoadTimeout = decodeObservatoryDuration(AppConfig.PREF_OBSERVATORY_LEAST_LOAD_TIMEOUT, AppConfig.OBSERVATORY_LEAST_LOAD_TIMEOUT)
         val balancer = V2rayConfig.RoutingBean.BalancerBean(
             tag = balancerTag,
             selector = selector,
+            fallbackTag = fallbackTag,
             strategy = V2rayConfig.RoutingBean.StrategyObject(type = strategyType.policyGroupType)
         )
-        val observatory = if (strategyType.requiresObservatory) {
+        val observatory = if (strategyType.requiresObservatory || fallbackTag != null) {
             V2rayConfig.ObservatoryObject(
                 subjectSelector = selector,
                 probeUrl = probeUrl,
-                probeInterval = "3m",
+                probeInterval = leastPingInterval,
                 enableConcurrency = true
             )
         } else null
@@ -1287,13 +1321,31 @@ object CoreConfigManager {
                 subjectSelector = selector,
                 pingConfig = V2rayConfig.BurstObservatoryObject.PingConfigObject(
                     destination = probeUrl,
-                    interval = "5m",
-                    sampling = 2,
-                    timeout = "30s"
+                    httpMethod = leastLoadMethod,
+                    interval = leastLoadInterval,
+                    sampling = leastLoadSampling,
+                    timeout = leastLoadTimeout
                 )
             )
         } else null
         return BalancerStrategy(balancer, observatory, burstObservatory)
+    }
+
+    private fun decodeObservatoryDuration(key: String, default: String): String {
+        val value = MmkvManager.decodeSettingsString(key)?.trim()
+        return if (!value.isNullOrEmpty() && AppConfig.OBSERVATORY_DURATION_PATTERN.matches(value)) {
+            value
+        } else {
+            default
+        }
+    }
+
+    private fun decodeObservatorySampling(): Int {
+        return MmkvManager.decodeSettingsString(AppConfig.PREF_OBSERVATORY_LEAST_LOAD_SAMPLING)
+            ?.trim()
+            ?.toIntOrNull()
+            ?.takeIf { it > 0 }
+            ?: AppConfig.OBSERVATORY_LEAST_LOAD_SAMPLING.toInt()
     }
 
     /**

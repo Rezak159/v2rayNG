@@ -1,10 +1,8 @@
 package com.v2ray.ang.ui
 
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.os.Bundle
-import android.util.Size as TargetSize
 import androidx.camera.compose.CameraXViewfinder
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraControl
@@ -65,14 +63,16 @@ import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.common.HybridBinarizer
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
-import com.v2ray.ang.compose.AppTopBar
 import com.v2ray.ang.enums.PermissionType
 import com.v2ray.ang.extension.toast
-import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.ui.base.HelperBaseComponentActivity
+import com.v2ray.ang.ui.compose.AppTopBar
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.QRCodeDecoder
+import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import android.util.Size as TargetSize
 
 private val qrReader = MultiFormatReader()
 
@@ -82,14 +82,7 @@ class ScannerActivity : HelperBaseComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val startImmediate = MmkvManager.decodeSettingsBool(AppConfig.PREF_START_SCAN_IMMEDIATE, false)
-        if (ContextCompat.checkSelfPermission(
-                this,
-                PermissionType.CAMERA.getPermission()
-            ) == PackageManager.PERMISSION_GRANTED && startImmediate
-        ) {
-            uiState.value = ScannerUiState.ACTIVE
-        }
+        startScan()
     }
 
     @Composable
@@ -186,7 +179,9 @@ fun ScannerScreen(
                                 if (isScanning) R.drawable.ic_stop_24dp
                                 else R.drawable.ic_scan_24dp
                             ),
-                            contentDescription = if (isScanning) "stop scan" else "start scan"
+                            contentDescription = stringResource(
+                                if (isScanning) R.string.acc_stop_scanner else R.string.acc_start_scanner
+                            )
                         )
                     }
                     if (isScanning && hasTorch) {
@@ -201,14 +196,17 @@ fun ScannerScreen(
                                     if (torchEnabled) R.drawable.ic_flash_on_24dp
                                     else R.drawable.ic_flash_off_24dp
                                 ),
-                                contentDescription = "Torch"
+                                contentDescription = stringResource(
+                                    if (torchEnabled) R.string.acc_turn_torch_off
+                                    else R.string.acc_turn_torch_on
+                                )
                             )
                         }
                     }
                     IconButton(onClick = onSelectPhoto) {
                         Icon(
                             painterResource(R.drawable.ic_image_24dp),
-                            contentDescription = "select image"
+                            contentDescription = stringResource(R.string.acc_select_image)
                         )
                     }
                 }
@@ -252,7 +250,7 @@ private fun ScannerIdlePlaceholder(onStartClick: () -> Unit) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
                 painter = painterResource(R.drawable.ic_scan_24dp),
-                contentDescription = "Start Scanner",
+                contentDescription = stringResource(R.string.acc_start_scanner),
                 modifier = Modifier.size(80.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
@@ -418,15 +416,14 @@ private fun processImageProxy(
         return
     }
     try {
-        val buffer = imageProxy.planes[0].buffer
-        val bytes = ByteArray(buffer.remaining())
-        buffer.get(bytes)
         val width = imageProxy.width
         val height = imageProxy.height
-        val source = PlanarYUVLuminanceSource(
-            bytes, width, height,
-            0, 0, width, height,
-            false
+        val yPlane = imageProxy.planes[0]
+        val source = createYPlaneLuminanceSource(
+            buffer = yPlane.buffer,
+            width = width,
+            height = height,
+            rowStride = yPlane.rowStride,
         )
         val binaryBitmap = BinaryBitmap(HybridBinarizer(source))
         val hints = mapOf(
@@ -444,4 +441,27 @@ private fun processImageProxy(
     } finally {
         imageProxy.close()
     }
+}
+
+internal fun createYPlaneLuminanceSource(
+    buffer: ByteBuffer,
+    width: Int,
+    height: Int,
+    rowStride: Int,
+): PlanarYUVLuminanceSource {
+    val bufferCopy = buffer.duplicate()
+    val bytes = ByteArray(bufferCopy.remaining())
+    bufferCopy.get(bytes)
+    // Camera HALs may pad each Y row. ZXing advances rows by dataWidth, so the
+    // reported row stride must be used instead of the visible image width.
+    return PlanarYUVLuminanceSource(
+        bytes,
+        rowStride,
+        height,
+        0,
+        0,
+        width,
+        height,
+        false,
+    )
 }
