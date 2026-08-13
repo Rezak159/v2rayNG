@@ -51,6 +51,8 @@ object AppConfig {
     const val PREF_OBSERVATORY_LEAST_LOAD_TIMEOUT = "pref_observatory_least_load_timeout"
     const val SUBSCRIPTION_UPDATE_TASK_NAME = "subscription_updater"
     const val SUBSCRIPTION_MIN_INTERVAL_MINUTES = 15L
+    const val SUBSCRIPTION_DEFAULT_INTERVAL_MINUTES = 240L
+    const val GEO_UPDATE_TASK_NAME = "geo_updater"
 
     const val APP_LINK_HOST = "import.a4secure.xyz"
     const val APP_LINK_SUB_PATH = "/app/sub/"

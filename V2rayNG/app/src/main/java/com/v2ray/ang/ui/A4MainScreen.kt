@@ -168,6 +168,7 @@ fun A4MainScreen(
     onImportSubscription: (String) -> Unit,
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
+    val isLoading by mainViewModel.isLoading.collectAsStateWithLifecycle()
     // Читаем state.groups здесь, во внешнем scope, чтобы он пересобирался после
     // импорта подписки. Иначе state читается только внутри дочерних лямбд, внешний
     // scope не подписан на изменения — и экран не переключался бы до перезапуска.
@@ -180,7 +181,7 @@ fun A4MainScreen(
     A4Theme {
         if (!hasUsableSubscription) {
             SubscriptionEntry(
-                isLoading = state.isLoading,
+                isLoading = isLoading,
                 onImportSubscription = onImportSubscription,
             )
         } else {

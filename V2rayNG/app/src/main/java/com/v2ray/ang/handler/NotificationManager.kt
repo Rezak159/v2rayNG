@@ -20,7 +20,7 @@ import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.extension.toSpeedString
 import com.v2ray.ang.ui.main.MainActivity
 import com.v2ray.ang.util.LogUtil
-import com.v2ray.ang.util.MessageUtil
+import com.v2ray.ang.helper.MessageHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -285,7 +285,7 @@ object NotificationManager {
             }
             val downBps = (downBytes / sinceLastQueryInSeconds).toLong()
             val upBps = (upBytes / sinceLastQueryInSeconds).toLong()
-            MessageUtil.sendMsg2UI(service, AppConfig.MSG_SPEED_UPDATE, "$downBps,$upBps")
+            MessageHelper.sendMsg2UI(service, AppConfig.MSG_SPEED_UPDATE, "$downBps,$upBps")
         }
 
         if (MmkvManager.decodeSettingsBool(AppConfig.PREF_SPEED_ENABLED) == true && (!zeroSpeed || !lastZeroSpeed)) {

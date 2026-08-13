@@ -14,5 +14,10 @@ data class SubscriptionItem(
     var allowInsecureUrl: Boolean = false,
     var userAgent: String? = null,
     var requestHeaders: String? = null,
+    var uploadBytes: Long = 0,
+    var downloadBytes: Long = 0,
+    var totalBytes: Long = 0,
+    var expire: Long = 0,
+    var title: String = "",
+    var refill: Long = 0,
 )
-
