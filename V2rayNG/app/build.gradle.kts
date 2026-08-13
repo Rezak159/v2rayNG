@@ -10,11 +10,11 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.v2ray.ang"
+        applicationId = "com.a4vpn.app.alpha"
         minSdk = 24
         targetSdk = 37
-        versionCode = 743
-        versionName = "2.3.3"
+        versionCode = 2
+        versionName = "0.3-alpha"
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {
