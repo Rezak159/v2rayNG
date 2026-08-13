@@ -104,6 +104,9 @@
     <string name="server_lab_kcp_tti">mKCP TTI (optional, core default 50)</string>
     <string name="toast_success">Success</string>
     <string name="toast_failure">Failure</string>
+    <string name="update_unknown_sources_title">Enable install permission</string>
+    <string name="update_unknown_sources_message">To install the update, allow this app to install unknown apps in the next screen.</string>
+    <string name="update_unknown_sources_action">Open settings</string>
     <string name="toast_none_data">No data available</string>
     <string name="toast_incorrect_protocol">Incorrect protocol</string>
     <string name="toast_decoding_failed">Decoding failed</string>

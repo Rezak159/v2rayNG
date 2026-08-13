@@ -37,6 +37,7 @@ import com.v2ray.ang.ui.A4MainScreen
 import com.v2ray.ang.ui.AboutActivity
 import com.v2ray.ang.ui.backup.BackupActivity
 import com.v2ray.ang.ui.base.HelperBaseComponentActivity
+import com.v2ray.ang.ui.compose.ConfirmDialog
 import com.v2ray.ang.ui.checkupdate.CheckUpdateActivity
 import com.v2ray.ang.ui.logcat.LogcatActivity
 import com.v2ray.ang.ui.perappproxy.PerAppProxyActivity
@@ -75,6 +76,9 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private var appUpdate by mutableStateOf<AppUpdate?>(null)
     private var isDownloadingUpdate by mutableStateOf(false)
+    private var updateDownloadProgress by mutableStateOf(0f)
+    private var showInstallPermissionReminder by mutableStateOf(false)
+    private var pendingUpdateApk: File? = null
 
     private val requestVpnPermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -108,6 +112,17 @@ class MainActivity : HelperBaseComponentActivity() {
             if (restartService && mainViewModel.uiState.value.isRunning) restartV2Ray()
         }
 
+    private val requestInstallPermission =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            // Пользователь мог включить разрешение и просто нажать «назад» —
+            // resultCode здесь не гарантирован, поэтому просто перепроверяем.
+            val apk = pendingUpdateApk ?: return@registerForActivityResult
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls()) {
+                pendingUpdateApk = null
+                installApk(apk)
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         mainViewModel.onAction(MainAction.Initialize)
@@ -135,8 +150,29 @@ class MainActivity : HelperBaseComponentActivity() {
             onImportSubscription = ::importSubscriptionFromEntry,
             appUpdate = appUpdate,
             isDownloadingUpdate = isDownloadingUpdate,
+            downloadProgress = updateDownloadProgress,
             onInstallUpdate = ::downloadAndInstallUpdate,
         )
+        if (showInstallPermissionReminder) {
+            ConfirmDialog(
+                title = getString(R.string.update_unknown_sources_title),
+                message = getString(R.string.update_unknown_sources_message),
+                confirmText = getString(R.string.update_unknown_sources_action),
+                onConfirm = {
+                    showInstallPermissionReminder = false
+                    requestInstallPermission.launch(
+                        Intent(
+                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:$packageName"),
+                        ),
+                    )
+                },
+                onDismiss = {
+                    showInstallPermissionReminder = false
+                    pendingUpdateApk = null
+                },
+            )
+        }
     }
 
     private fun checkForAppUpdate() {
@@ -150,8 +186,11 @@ class MainActivity : HelperBaseComponentActivity() {
         if (isDownloadingUpdate) return
 
         isDownloadingUpdate = true
+        updateDownloadProgress = 0f
         lifecycleScope.launch {
-            val apk = AppUpdateManager.download(this@MainActivity, update)
+            val apk = AppUpdateManager.download(this@MainActivity, update) { progress ->
+                updateDownloadProgress = progress
+            }
             isDownloadingUpdate = false
             if (apk == null) {
                 toastError(R.string.toast_failure)
@@ -163,15 +202,14 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private fun requestApkInstallation(apk: File) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
-            startActivity(
-                Intent(
-                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:$packageName"),
-                ),
-            )
+            pendingUpdateApk = apk
+            showInstallPermissionReminder = true
             return
         }
+        installApk(apk)
+    }
 
+    private fun installApk(apk: File) {
         val uri = FileProvider.getUriForFile(this, "$packageName.cache", apk)
         startActivity(
             Intent(Intent.ACTION_VIEW)

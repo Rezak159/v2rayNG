@@ -293,7 +293,8 @@ object HttpUtil {
 
     fun downloadToFile(
         request: UrlContentRequest,
-        targetFile: File
+        targetFile: File,
+        onProgress: ((bytesRead: Long, contentLength: Long) -> Unit)? = null,
     ): Boolean {
         val url = request.url ?: return false
         val client = buildOkHttpClient(request.timeout, request.httpPort, request.proxyUsername, request.proxyPassword, followRedirects = true)
@@ -312,9 +313,18 @@ object HttpUtil {
                     return false
                 }
                 val body = response.body ?: return false
+                val contentLength = body.contentLength()
                 body.byteStream().use { input ->
                     targetFile.outputStream().use { output ->
-                        input.copyTo(output)
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        var bytesRead = 0L
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            output.write(buffer, 0, read)
+                            bytesRead += read
+                            onProgress?.invoke(bytesRead, contentLength)
+                        }
                     }
                 }
                 true

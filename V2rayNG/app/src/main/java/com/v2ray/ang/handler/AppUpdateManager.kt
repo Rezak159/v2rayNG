@@ -30,7 +30,11 @@ object AppUpdateManager {
         update.takeIf { it.versionCode > currentVersionCode(context) }
     }
 
-    suspend fun download(context: Context, update: AppUpdate): File? = withContext(Dispatchers.IO) {
+    suspend fun download(
+        context: Context,
+        update: AppUpdate,
+        onProgress: (Float) -> Unit = {},
+    ): File? = withContext(Dispatchers.IO) {
         if (!isValid(update)) return@withContext null
 
         val directory = File(context.cacheDir, UPDATE_DIRECTORY).apply { mkdirs() }
@@ -41,7 +45,9 @@ object AppUpdateManager {
         val downloaded = HttpUtil.downloadToFile(
             UrlContentRequest(url = update.apkUrl, timeout = 60_000),
             temporary,
-        )
+        ) { bytesRead, contentLength ->
+            if (contentLength > 0) onProgress(bytesRead.toFloat() / contentLength)
+        }
         if (!downloaded || sha256(temporary) != update.sha256.lowercase()) {
             temporary.delete()
             LogUtil.w(AppConfig.TAG, "Downloaded APK failed SHA-256 verification")
