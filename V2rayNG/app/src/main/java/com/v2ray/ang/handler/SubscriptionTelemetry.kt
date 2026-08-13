@@ -5,7 +5,7 @@ import androidx.core.content.pm.PackageInfoCompat
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.BuildConfig
-import com.v2ray.ang.util.HttpUtil
+import com.v2ray.ang.util.DirectNetworkHttp
 import com.v2ray.ang.util.JsonUtil
 import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.CoroutineScope
@@ -35,7 +35,7 @@ object SubscriptionTelemetry {
                 "deviceModel" to "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
                 "abi" to (Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"),
             )
-            HttpUtil.postJson(AppConfig.TELEMETRY_URL, JsonUtil.toJson(payload))
+            DirectNetworkHttp.postJson(AngApplication.application, AppConfig.TELEMETRY_URL, JsonUtil.toJson(payload))
         }
     }
 

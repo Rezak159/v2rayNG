@@ -60,8 +60,12 @@ object AppConfig {
     const val SUB_KEY_HOST = "sub.a4secure.xyz"
     const val APP_UPDATE_MANIFEST_URL = "https://app.a4vpn.net/update.json"
     const val APP_UPDATE_HOST = "app.a4vpn.net"
+    const val APP_POLICY_URL = "https://app.a4vpn.net/policy.json"
+    const val APP_DOWNLOAD_PAGE_URL = "https://app.a4vpn.net/download"
     const val TELEMETRY_URL = "https://app.a4vpn.net/telemetry/subscription-refresh"
     const val PREF_INSTALLATION_ID = "pref_installation_id"
+    const val PREF_APP_POLICY = "pref_app_policy"
+    const val PREF_APP_POLICY_FIRST_SEEN = "pref_app_policy_first_seen"
 
     // Temporary: new installations must start only with a subscription supplied
     // by the user. Keep the URL constant to recognize legacy saved profiles.

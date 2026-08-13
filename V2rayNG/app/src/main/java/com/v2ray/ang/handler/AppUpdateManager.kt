@@ -5,8 +5,7 @@ import android.net.Uri
 import androidx.core.content.pm.PackageInfoCompat
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.AppUpdate
-import com.v2ray.ang.dto.UrlContentRequest
-import com.v2ray.ang.util.HttpUtil
+import com.v2ray.ang.util.DirectNetworkHttp
 import com.v2ray.ang.util.JsonUtil
 import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.Dispatchers
@@ -18,9 +17,8 @@ object AppUpdateManager {
     private const val UPDATE_DIRECTORY = "updates"
 
     suspend fun checkForUpdate(context: Context): AppUpdate? = withContext(Dispatchers.IO) {
-        val body = HttpUtil.getUrlContent(
-            UrlContentRequest(url = AppConfig.APP_UPDATE_MANIFEST_URL, timeout = 5_000),
-        ) ?: return@withContext null
+        val body = DirectNetworkHttp.getText(context, AppConfig.APP_UPDATE_MANIFEST_URL, 5_000)
+            ?: return@withContext null
 
         val update = JsonUtil.fromJsonSafe(body, AppUpdate::class.java) ?: return@withContext null
         if (!isValid(update)) {
@@ -42,9 +40,11 @@ object AppUpdateManager {
         val temporary = File(directory, "a4vpn-${update.versionCode}.apk.part")
         temporary.delete()
 
-        val downloaded = HttpUtil.downloadToFile(
-            UrlContentRequest(url = update.apkUrl, timeout = 60_000),
+        val downloaded = DirectNetworkHttp.downloadToFile(
+            context,
+            update.apkUrl,
             temporary,
+            60_000,
         ) { bytesRead, contentLength ->
             if (contentLength > 0) onProgress(bytesRead.toFloat() / contentLength)
         }

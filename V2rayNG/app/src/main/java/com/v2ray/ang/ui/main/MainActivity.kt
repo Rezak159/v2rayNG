@@ -1,6 +1,8 @@
 package com.v2ray.ang.ui.main
 
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
 import android.net.Uri
 import android.net.VpnService
 import android.os.Build
@@ -15,6 +17,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.AngApplication
@@ -30,6 +42,8 @@ import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.AppUpdateManager
+import com.v2ray.ang.handler.AppPolicyManager
+import com.v2ray.ang.handler.AppPolicyState
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.handler.SettingsManager
@@ -79,6 +93,11 @@ class MainActivity : HelperBaseComponentActivity() {
     private var updateDownloadProgress by mutableStateOf(0f)
     private var showInstallPermissionReminder by mutableStateOf(false)
     private var pendingUpdateApk: File? = null
+    private var appPolicyState by mutableStateOf<AppPolicyState>(AppPolicyState.Allowed)
+
+    private val policyNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) = refreshAppPolicy()
+    }
 
     private val requestVpnPermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -129,7 +148,23 @@ class MainActivity : HelperBaseComponentActivity() {
 
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
         importFromIntent(intent)
+        refreshAppPolicy()
         checkForAppUpdate()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        getSystemService(ConnectivityManager::class.java)?.registerDefaultNetworkCallback(policyNetworkCallback)
+    }
+
+    override fun onStop() {
+        getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(policyNetworkCallback)
+        super.onStop()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshAppPolicy()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -141,6 +176,11 @@ class MainActivity : HelperBaseComponentActivity() {
     @Composable
     override fun ScreenContent() {
         BackHandler { moveTaskToBack(false) }
+        val blocked = appPolicyState as? AppPolicyState.UpdateRequired
+        if (blocked != null) {
+            ForcedUpdateScreen(blocked.message, blocked.downloadUrl)
+            return
+        }
         A4MainScreen(
             mainViewModel = mainViewModel,
             onConnectionClick = ::handleFabAction,
@@ -172,6 +212,30 @@ class MainActivity : HelperBaseComponentActivity() {
                     pendingUpdateApk = null
                 },
             )
+        }
+    }
+
+    @Composable
+    private fun ForcedUpdateScreen(message: String, downloadUrl: String) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(32.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("Требуется обновление", style = MaterialTheme.typography.headlineSmall)
+            Text(message, modifier = Modifier.padding(top = 16.dp), style = MaterialTheme.typography.bodyLarge)
+            Button(
+                modifier = Modifier.padding(top = 24.dp),
+                onClick = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))) },
+            ) { Text("Скачать новую версию") }
+        }
+    }
+
+    private fun refreshAppPolicy() {
+        lifecycleScope.launch {
+            val state = AppPolicyManager.refresh(this@MainActivity)
+            appPolicyState = state
+            if (state is AppPolicyState.UpdateRequired) LauncherManager.stopService(this@MainActivity)
         }
     }
 
@@ -298,6 +362,7 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private fun handleFabAction() {
+        if (appPolicyState is AppPolicyState.UpdateRequired) return
         if (mainViewModel.uiState.value.isRunning) {
             LauncherManager.stopService(this)
         } else if (SettingsManager.isVpnMode()) {
