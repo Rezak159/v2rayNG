@@ -40,6 +40,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.AppInfo
 import com.v2ray.ang.extension.toastSuccess
+import com.v2ray.ang.ui.A4Red
 import com.v2ray.ang.ui.base.BaseComponentActivity
 import com.v2ray.ang.ui.compose.AppDivider
 import com.v2ray.ang.ui.compose.AppDropdownMenuItems
@@ -213,7 +214,7 @@ fun PerAppProxyScreen(
                         onCheckedChange = onPerAppProxyChanged,
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = MaterialTheme.colorScheme.onSecondary,
-                            checkedTrackColor = colorFabActive
+                            checkedTrackColor = A4Red
                         )
                     )
                 }

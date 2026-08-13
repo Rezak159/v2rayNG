@@ -56,6 +56,7 @@ import coil.request.ImageRequest
 import com.v2ray.ang.util.AppIconFetcher
 import androidx.compose.ui.unit.sp
 import com.v2ray.ang.R
+import com.v2ray.ang.ui.A4Red
 import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -211,7 +212,7 @@ fun AppListItem(
         Checkbox(
             checked = checked,
             onCheckedChange = onCheckedChange,
-            colors = CheckboxDefaults.colors(checkedColor = colorFabActive)
+            colors = CheckboxDefaults.colors(checkedColor = A4Red)
         )
     }
 }
