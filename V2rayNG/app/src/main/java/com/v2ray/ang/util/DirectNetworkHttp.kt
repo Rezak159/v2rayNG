@@ -10,7 +10,7 @@ import java.net.URL
 
 /** Requests A4VPN service endpoints through Wi-Fi/mobile, never through this app's VPN network. */
 object DirectNetworkHttp {
-    fun getText(context: Context, url: String, timeout: Int): String? =
+    fun getText(context: Context, url: String, timeout: Int): String? = runCatching {
         openConnection(context, url, timeout)?.let { connection ->
             try {
                 if (connection.responseCode !in 200..299) return@let null
@@ -19,6 +19,7 @@ object DirectNetworkHttp {
                 connection.disconnect()
             }
         }
+    }.onFailure { LogUtil.w("DirectNetworkHttp", "A4VPN service request failed: ${it.message}") }.getOrNull()
 
     fun downloadToFile(
         context: Context,

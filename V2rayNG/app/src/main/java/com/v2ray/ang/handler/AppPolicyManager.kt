@@ -37,6 +37,9 @@ object AppPolicyManager {
             ?.let(::parseVerified)
         if (cached != null) {
             if (currentVersionCode(context) < cached.minVersionCode) return blocked(cached)
+            // A permissive policy is only a connectivity probe. It must never lock the app,
+            // even if an older server response had an invalid expiry unit.
+            if (cached.minVersionCode == 0) return AppPolicyState.Allowed
             if (now <= cached.expiresAt) return AppPolicyState.Allowed
             return blocked(cached, "Не удалось подтвердить актуальность приложения. Подключитесь к интернету и обновите A4VPN.")
         }
