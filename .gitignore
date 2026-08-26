@@ -25,6 +25,16 @@ V2rayNG/local.properties
 *.apk
 *.aar
 
+# Native artifacts staged into the app module: libv2ray.aar from AndroidLibXrayLite
+# and the hev-socks5-tunnel binaries built by compile-hevtun.sh. Fetched per build,
+# never committed. Covered by *.aar and *.so above; listed explicitly so the intent
+# survives any change to those patterns.
+V2rayNG/app/libs/
+/libs/
+
+# Ignore fork endpoints (Telegram bot, site). Template: V2rayNG/a4.properties.example
+V2rayNG/a4.properties
+
 # Ignore signing properties
 signing.properties
 

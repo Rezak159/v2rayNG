@@ -67,7 +67,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
-private const val BOT_URL = "https://t.me/a4securebot"
+private const val BOT_URL = AppConfig.TELEGRAM_BOT_URL
 private val TelegramBlue = Color(0xFF229ED9)
 
 /** Логотип Telegram (бумажный самолётик), путь из SVG в координатах 24×24. */

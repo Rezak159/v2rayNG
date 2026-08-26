@@ -1,0 +1,10 @@
+# Шаблон внешних ссылок A4VPN.
+# Скопируй в V2rayNG/a4.properties (файл в .gitignore) и впиши свои значения.
+# В CI вместо файла можно выставить переменные окружения
+# A4_TELEGRAM_BOT_URL и A4_SITE_URL.
+
+# Telegram-бот, который выдаёт ключ доступа.
+a4.telegramBotUrl=https://t.me/<bot>
+
+# Сайт с инструкцией на случай, если Telegram не открывается.
+a4.siteUrl=https://<site>/

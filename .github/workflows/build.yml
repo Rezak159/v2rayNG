@@ -94,6 +94,9 @@ jobs:
         encodedString: ${{ secrets.APP_KEYSTORE_BASE64 }}
 
     - name: Build APK
+      env:
+        A4_TELEGRAM_BOT_URL: ${{ secrets.A4_TELEGRAM_BOT_URL }}
+        A4_SITE_URL: ${{ secrets.A4_SITE_URL }}
       run: |
         cd ${{ github.workspace }}/V2rayNG
         echo "sdk.dir=${ANDROID_HOME}" > local.properties

@@ -14,6 +14,22 @@ if (signingPropertiesFile.exists()) {
     signingPropertiesFile.inputStream().use(signingProperties::load)
 }
 
+// Ссылки, по которым приложение уводит человека наружу (бот и сайт). Держим их вне
+// репозитория: значения берём из V2rayNG/a4.properties (в .gitignore) либо из
+// переменных окружения — так их можно менять, не трогая исходники и историю git.
+// Шаблон с ключами — a4.properties.example.
+val a4Endpoints = Properties().apply {
+    rootProject.file("a4.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
+}
+
+fun a4Endpoint(key: String, envName: String): String =
+    (a4Endpoints.getProperty(key) ?: System.getenv(envName))?.trim().orEmpty().ifEmpty {
+        throw GradleException(
+            "Не задан $key. Скопируй V2rayNG/a4.properties.example в V2rayNG/a4.properties " +
+                "и впиши значение, либо выставь переменную окружения $envName."
+        )
+    }
+
 android {
     namespace = "com.v2ray.ang"
     compileSdk = 37
@@ -43,6 +59,17 @@ android {
                 isUniversalApk = abiFilterList.isNullOrEmpty()
             }
         }
+
+        buildConfigField(
+            "String",
+            "TELEGRAM_BOT_URL",
+            "\"${a4Endpoint("a4.telegramBotUrl", "A4_TELEGRAM_BOT_URL")}\"",
+        )
+        buildConfigField(
+            "String",
+            "SITE_URL",
+            "\"${a4Endpoint("a4.siteUrl", "A4_SITE_URL")}\"",
+        )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

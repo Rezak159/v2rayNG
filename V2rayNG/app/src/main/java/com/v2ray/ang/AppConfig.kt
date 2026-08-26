@@ -56,7 +56,13 @@ object AppConfig {
 
     const val APP_LINK_HOST = "import.a4secure.xyz"
     const val APP_LINK_SUB_PATH = "/app/sub/"
-    const val TELEGRAM_BOT_URL = "https://t.me/a4securebot"
+    /**
+     * Внешние ссылки задаются в V2rayNG/a4.properties (файл в .gitignore, шаблон —
+     * a4.properties.example) и приезжают сюда через BuildConfig, чтобы не лежать в
+     * исходниках. См. блок a4Endpoint в app/build.gradle.kts.
+     */
+    const val TELEGRAM_BOT_URL = BuildConfig.TELEGRAM_BOT_URL
+    const val SITE_URL = BuildConfig.SITE_URL
     const val SUB_KEY_HOST = "sub.a4secure.xyz"
     const val APP_UPDATE_MANIFEST_URL = "https://app.a4vpn.net/update.json"
     const val APP_UPDATE_HOST = "app.a4vpn.net"

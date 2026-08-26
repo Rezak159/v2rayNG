@@ -112,7 +112,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.withLink
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
@@ -120,6 +123,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -1438,6 +1442,7 @@ private fun SubscriptionEntry(
     // где вообще берётся ключ, и только потом просить его вставить.
     var keyEntryExpanded by remember { mutableStateOf(false) }
     var noTelegramHintExpanded by remember { mutableStateOf(false) }
+    val siteUrl = AppConfig.SITE_URL
     Box(
         Modifier
             .fillMaxSize()
@@ -1551,7 +1556,23 @@ private fun SubscriptionEntry(
                                 .padding(horizontal = 16.dp, vertical = 14.dp),
                         ) {
                             Text(
-                                "Ключ не привязан к Telegram: попроси ссылку у того, кто тебя пригласил, — она сработает на любом устройстве. Способ получить ключ прямо в приложении появится в следующих обновлениях.",
+                                buildAnnotatedString {
+                                    append("Инструкция, что делать, если Telegram не открывается, есть на сайте: ")
+                                    withLink(
+                                        LinkAnnotation.Url(
+                                            url = siteUrl,
+                                            styles = TextLinkStyles(
+                                                style = SpanStyle(
+                                                    color = A4Red,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    textDecoration = TextDecoration.Underline,
+                                                ),
+                                            ),
+                                        ),
+                                    ) {
+                                        append(siteUrl)
+                                    }
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = A4TextMuted,
                             )
