@@ -47,18 +47,24 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // signing.properties есть только там, где лежит релизный keystore. Без него
+    // конфиг не регистрируем вовсе: иначе getProperty вернёт null и падает любая
+    // задача, включая debug-сборку и ./gradlew tasks. CI подписывает релиз через
+    // -Pandroid.injected.signing.*, ему этот блок не нужен.
     signingConfigs {
-        create("release") {
-            storeFile = file(signingProperties.getProperty("storeFile"))
-            storePassword = signingProperties.getProperty("storePassword")
-            keyAlias = signingProperties.getProperty("keyAlias")
-            keyPassword = signingProperties.getProperty("keyPassword")
+        if (signingPropertiesFile.exists()) {
+            create("release") {
+                storeFile = file(signingProperties.getProperty("storeFile"))
+                storePassword = signingProperties.getProperty("storePassword")
+                keyAlias = signingProperties.getProperty("keyAlias")
+                keyPassword = signingProperties.getProperty("keyPassword")
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
