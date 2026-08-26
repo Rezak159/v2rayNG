@@ -137,6 +137,7 @@ import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.ui.main.MainViewModel
+import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1431,6 +1432,12 @@ private fun SubscriptionEntry(
     isLoading: Boolean,
     onImportSubscription: (String) -> Unit,
 ) {
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    // Поле ввода прячем до первого действия: новому человеку сперва надо сказать,
+    // где вообще берётся ключ, и только потом просить его вставить.
+    var keyEntryExpanded by remember { mutableStateOf(false) }
+    var noTelegramHintExpanded by remember { mutableStateOf(false) }
     Box(
         Modifier
             .fillMaxSize()
@@ -1480,7 +1487,7 @@ private fun SubscriptionEntry(
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Вставь фирменную ссылку из Telegram — приложение настроится само.",
+                        "Приложение настроится само — нужна только фирменная ссылка. Если её ещё нет, забери у бота в Telegram.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = A4TextMuted,
                     )
@@ -1488,13 +1495,96 @@ private fun SubscriptionEntry(
             }
             Spacer(Modifier.height(18.dp))
             A4StaggerIn(3) {
-                SubscriptionLinkEntry(
-                    busy = isLoading,
-                    onSubmit = onImportSubscription,
+                Column(Modifier.fillMaxWidth()) {
+                    AnimatedVisibility(visible = !keyEntryExpanded) {
+                        EntryAction(
+                            label = "У МЕНЯ ЕСТЬ КЛЮЧ",
+                            filled = true,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                                keyEntryExpanded = true
+                            },
+                        )
+                    }
+                    AnimatedVisibility(visible = keyEntryExpanded) {
+                        SubscriptionLinkEntry(
+                            busy = isLoading,
+                            onSubmit = onImportSubscription,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            A4StaggerIn(4) {
+                EntryAction(
+                    label = "ПОЛУЧИТЬ КЛЮЧ В TELEGRAM",
+                    filled = false,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                        Utils.openUri(context, AppConfig.TELEGRAM_BOT_URL)
+                    },
                 )
+            }
+            Spacer(Modifier.height(4.dp))
+            A4StaggerIn(5) {
+                Column(
+                    Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        "Telegram не открывается",
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { noTelegramHintExpanded = !noTelegramHintExpanded }
+                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = A4TextMuted,
+                        textAlign = TextAlign.Center,
+                    )
+                    AnimatedVisibility(visible = noTelegramHintExpanded) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(A4PaperCard)
+                                .border(1.dp, A4Border, RoundedCornerShape(14.dp))
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                        ) {
+                            Text(
+                                "Ключ не привязан к Telegram: попроси ссылку у того, кто тебя пригласил, — она сработает на любом устройстве. Способ получить ключ прямо в приложении появится в следующих обновлениях.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = A4TextMuted,
+                            )
+                        }
+                    }
+                }
             }
             Spacer(Modifier.height(32.dp))
         }
+    }
+}
+
+/** Кнопка первого запуска: [filled] — основная (красная), иначе тихая рамка. */
+@Composable
+private fun EntryAction(label: String, filled: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .springClick(scale = 0.97f, onClick = onClick)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (filled) A4Red else A4PaperCard)
+            .then(
+                if (filled) Modifier
+                else Modifier.border(1.5.dp, A4Border, RoundedCornerShape(10.dp)),
+            )
+            .padding(vertical = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, letterSpacing = 1.sp),
+            color = if (filled) Color.White else A4Ink,
+        )
     }
 }
 
