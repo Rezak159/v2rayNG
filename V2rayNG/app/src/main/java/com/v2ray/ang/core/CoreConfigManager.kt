@@ -15,6 +15,7 @@ import com.v2ray.ang.enums.CoreResolvedType
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.extension.isNotNullEmpty
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.PlanManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.util.HttpUtil
 import com.v2ray.ang.util.JsonUtil
@@ -193,6 +194,7 @@ object CoreConfigManager {
         val template = initV2rayConfig(configContext)
         configureRouting(configContext, template, emptyMap())
         configureDns(configContext, template, emptyMap())
+        applyTelegramOnlyRouting(template, emptyMap())
 
         val proxyTag = primary.get("tag")
             ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
@@ -286,6 +288,8 @@ object CoreConfigManager {
                 )
             }
         }
+
+        applyTelegramOnlyRouting(v2rayConfig, policyGroupBalancerTags)
 
         applyObservability(v2rayConfig, balancerStrategies)
         applySpeedDisabled(v2rayConfig)
@@ -1208,6 +1212,56 @@ object CoreConfigManager {
     /**
      * Configure routing domain strategy and append enabled user rules.
      */
+    /**
+     * a4vpn: бесплатный доступ — «только Telegram» силами самого ядра.
+     *
+     * Раньше это делал per-app proxy: в туннель пускали белый список пакетов
+     * Telegram. Список зависел от того, что установлено, а туннель без единого
+     * разрешённого приложения пропускает вообще всё — то есть бесплатный доступ
+     * молча превращался в полный VPN. Теперь отбор делает маршрутизация: в
+     * туннель уходят только Telegram и DNS, весь остальной трафик — мимо
+     * прокси, напрямую (не «block»: иначе на время сеанса телефон остался бы
+     * вообще без интернета).
+     *
+     * Пользовательские правила при этом стираем целиком: любое из них могло бы
+     * увести чужой трафик в туннель раньше, чем сработает наше «всё остальное
+     * напрямую». Оставляем только правила локального DNS (`dns-out`), без них
+     * ядро не ответит на запросы, перехваченные с 53-го порта.
+     */
+    private fun applyTelegramOnlyRouting(
+        v2rayConfig: V2rayConfig,
+        policyGroupBalancerTags: Map<String, String>
+    ) {
+        if (!PlanManager.isTelegramOnlyMode()) return
+
+        val proxyBalancerTag = policyGroupBalancerTags[AppConfig.TAG_PROXY]
+        fun toProxy(rule: V2rayConfig.RoutingBean.RulesBean) = rule.apply {
+            if (proxyBalancerTag != null) {
+                outboundTag = null
+                balancerTag = proxyBalancerTag
+            } else {
+                outboundTag = AppConfig.TAG_PROXY
+            }
+        }
+
+        val rules = v2rayConfig.routing.rules
+            .filterTo(ArrayList()) { it.outboundTag == "dns-out" }
+
+        rules.add(toProxy(V2rayConfig.RoutingBean.RulesBean(domain = PlanManager.TELEGRAM_DOMAINS)))
+        rules.add(toProxy(V2rayConfig.RoutingBean.RulesBean(ip = PlanManager.TELEGRAM_IPS)))
+        // DNS в туннель целиком: резолвить домены Telegram через подменённый
+        // ответ провайдера смысла нет, а трафика тут мало.
+        rules.add(toProxy(V2rayConfig.RoutingBean.RulesBean(port = "53")))
+        rules.add(V2rayConfig.RoutingBean.RulesBean(network = "tcp,udp", outboundTag = AppConfig.TAG_DIRECT))
+
+        v2rayConfig.routing.rules.clear()
+        v2rayConfig.routing.rules.addAll(rules)
+        // AsIs: клиент Telegram ходит по зашитым адресам дата-центров, их ловит
+        // правило по IP. Резолвить ради маршрутизации каждый чужой домен, который
+        // всё равно уйдёт напрямую, — лишняя задержка на всём трафике телефона.
+        v2rayConfig.routing.domainStrategy = "AsIs"
+    }
+
     private fun configureRouting(
         configContext: CoreConfigContext,
         v2rayConfig: V2rayConfig,

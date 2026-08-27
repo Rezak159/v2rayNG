@@ -56,6 +56,7 @@ import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.handler.GeoUpdater
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.MmkvManager.rememberMmkvBool
+import com.v2ray.ang.handler.PlanManager
 import com.v2ray.ang.handler.MmkvManager.rememberMmkvString
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
@@ -95,6 +96,8 @@ fun A4SettingsScreen(
     onBackClick: () -> Unit,
     onOpenLogcat: () -> Unit,
     onOpenPerAppProxy: () -> Unit,
+    busy: Boolean = false,
+    onImportSubscription: (String) -> Unit = {},
 ) {
     A4Theme {
         A4SettingsContent(
@@ -102,18 +105,27 @@ fun A4SettingsScreen(
             onBackClick = onBackClick,
             onOpenLogcat = onOpenLogcat,
             onOpenPerAppProxy = onOpenPerAppProxy,
+            busy = busy,
+            onImportSubscription = onImportSubscription,
         )
     }
 }
 
 /** Встраиваемый вариант (вкладка нижней навигации): без темы, отступа и кнопки «назад». */
 @Composable
-fun A4SettingsTab(onOpenLogcat: () -> Unit, onOpenPerAppProxy: () -> Unit) {
+fun A4SettingsTab(
+    onOpenLogcat: () -> Unit,
+    onOpenPerAppProxy: () -> Unit,
+    busy: Boolean,
+    onImportSubscription: (String) -> Unit,
+) {
     A4SettingsContent(
         embedded = true,
         onBackClick = {},
         onOpenLogcat = onOpenLogcat,
         onOpenPerAppProxy = onOpenPerAppProxy,
+        busy = busy,
+        onImportSubscription = onImportSubscription,
     )
 }
 
@@ -123,6 +135,8 @@ private fun A4SettingsContent(
     onBackClick: () -> Unit,
     onOpenLogcat: () -> Unit,
     onOpenPerAppProxy: () -> Unit,
+    busy: Boolean,
+    onImportSubscription: (String) -> Unit,
 ) {
     if (!embedded) BackHandler(onBack = onBackClick)
 
@@ -134,13 +148,10 @@ private fun A4SettingsContent(
     var logLevel by rememberMmkvString(AppConfig.PREF_LOGLEVEL, "warning")
 
     val subscription = remember { activeSubscription() }
-    // Платной подписки нет — значит человек вошёл без ключа и сидит на бесплатном
-    // Telegram. Показываем, как получить полный доступ.
-    val onFreePlan = remember {
-        MmkvManager.decodeSubscriptions().none {
-            it.subscription.url.isNotEmpty() && it.subscription.url != AppConfig.FREE_SUB_URL
-        }
-    }
+    // Платного доступа нет (не покупали или он кончился) — человек сидит на
+    // бесплатном Telegram. Показываем, как получить полный доступ.
+    val onFreePlan = remember { PlanManager.currentPlan() != PlanManager.Plan.PAID }
+    val paidRanOut = remember { PlanManager.paidRanOut() }
 
     val scope = rememberCoroutineScope()
     var geoRefresh by remember { mutableIntStateOf(0) }
@@ -180,7 +191,7 @@ private fun A4SettingsContent(
                 Spacer(Modifier.height(10.dp))
                 SettingsCard {
                     SettingsLinkRow(
-                        title = "Подключить подписку",
+                        title = if (paidRanOut) "Продлить подписку" else "Подключить подписку",
                         description = "сейчас бесплатный доступ — работает только Telegram",
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -188,6 +199,12 @@ private fun A4SettingsContent(
                         },
                     )
                 }
+                // Поле ввода ключа: на бесплатном доступе стартовый экран уже не
+                // показывается, а вставить купленный ключ надо где-то уметь.
+                Spacer(Modifier.height(10.dp))
+                A4SectionLabel("КЛЮЧ ДОСТУПА")
+                Spacer(Modifier.height(10.dp))
+                SubscriptionLinkEntry(busy = busy, onSubmit = onImportSubscription)
             } else if (subscription != null && subscription.hasTrafficInfo) {
                 Spacer(Modifier.height(20.dp))
                 A4SectionLabel("ПОДПИСКА")

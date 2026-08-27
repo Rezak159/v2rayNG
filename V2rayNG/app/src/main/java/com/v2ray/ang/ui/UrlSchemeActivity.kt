@@ -13,6 +13,7 @@ import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.ui.base.BaseComponentActivity
 import com.v2ray.ang.ui.main.MainActivity
 import com.v2ray.ang.util.LogUtil
+import com.v2ray.ang.util.SubLinkUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -22,6 +23,7 @@ class UrlSchemeActivity : BaseComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        var subscriptionUrl: String? = null
         try {
             intent.apply {
                 if (action == Intent.ACTION_SEND) {
@@ -44,6 +46,17 @@ class UrlSchemeActivity : BaseComponentActivity() {
                             parseUri(shareUrl, uri?.fragment)
                         }
 
+                        // a4vpn: кликабельная ссылка от бота — разбирает и импортирует
+                        // сам MainActivity через общую проверку SubLinkUtil.
+                        AppConfig.APP_LINK_HOST -> {
+                            val link = data?.toString()
+                            if (SubLinkUtil.isSubLink(link)) {
+                                subscriptionUrl = link
+                            } else {
+                                toastError(R.string.toast_failure)
+                            }
+                        }
+
                         else -> {
                             toastError(R.string.toast_failure)
                         }
@@ -51,7 +64,11 @@ class UrlSchemeActivity : BaseComponentActivity() {
                 }
             }
 
-            startActivity(Intent(this, MainActivity::class.java))
+            startActivity(
+                Intent(this, MainActivity::class.java).apply {
+                    subscriptionUrl?.let { putExtra(MainActivity.EXTRA_SUBSCRIPTION_URL, it) }
+                },
+            )
             finish()
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Error processing URL scheme", e)

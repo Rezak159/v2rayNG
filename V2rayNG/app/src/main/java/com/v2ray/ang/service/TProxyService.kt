@@ -19,20 +19,24 @@ class TProxyService(
     private val restartCallback: () -> Unit
 ) : Tun2SocksControl {
     companion object {
-        // a4vpn: сигнатуры должны точно совпадать с тем, что реально умеет
-        // libhev-socks5-tunnel.so в app/libs — это старый бинарник (Start/Stop
-        // без возврата значения, без TProxyIsRunning). Апстрим 2.3.3 принёс
-        // Kotlin-обёртку под НОВУЮ версию этой библиотеки (Boolean-возвраты +
-        // TProxyIsRunning), но сам .so при мёрже не обновился — несовпадение
-        // сигнатур валит RegisterNatives и роняет процесс сервиса по SIGABRT
-        // ещё до того, как VPN успевает подключиться.
+        // a4vpn: сигнатуры обязаны совпадать с таблицей native_methods в
+        // hev-jni.c один в один — RegisterNatives ищет методы по имени И типу
+        // возврата, а не найдя хоть один, роняет процесс сервиса по SIGABRT
+        // ещё до того, как VPN успеет подключиться. Текущий .so в app/libs —
+        // новый (Boolean-возвраты + TProxyIsRunning), поэтому TProxyIsRunning
+        // объявлен, хотя приложение его не вызывает: без него не зарегистрируется
+        // вся таблица целиком.
         @JvmStatic
         @Suppress("FunctionName")
-        private external fun TProxyStartService(configPath: String, fd: Int)
+        private external fun TProxyStartService(configPath: String, fd: Int): Boolean
 
         @JvmStatic
         @Suppress("FunctionName")
-        private external fun TProxyStopService()
+        private external fun TProxyStopService(): Boolean
+
+        @JvmStatic
+        @Suppress("FunctionName", "unused")
+        private external fun TProxyIsRunning(): Boolean
 
         @JvmStatic
         @Suppress("FunctionName")
@@ -58,7 +62,9 @@ class TProxyService(
 
         try {
 //            LogUtil.i(AppConfig.TAG, "TProxyStartService...")
-            TProxyStartService(configFile.absolutePath, vpnInterface.fd)
+            if (!TProxyStartService(configFile.absolutePath, vpnInterface.fd)) {
+                LogUtil.e(AppConfig.TAG, "HevSocks5Tunnel failed to start")
+            }
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "HevSocks5Tunnel exception: ${e.message}")
         }

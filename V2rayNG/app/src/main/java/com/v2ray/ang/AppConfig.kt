@@ -72,10 +72,18 @@ object AppConfig {
     const val PREF_INSTALLATION_ID = "pref_installation_id"
     const val PREF_APP_POLICY = "pref_app_policy"
     const val PREF_APP_POLICY_FIRST_SEEN = "pref_app_policy_first_seen"
+    // Отпечаток ключа из буфера обмена, который пользователь скрыл: повторно
+    // баннер для той же ссылки не показываем.
+    const val PREF_DISMISSED_SUB_LINK = "pref_dismissed_sub_link"
+    // Включён ли режим «только Telegram» (бесплатный доступ). Держим отдельным
+    // флагом, а не выводим из per-app proxy: на устройстве без Telegram список
+    // приложений остаётся пустым, а состояние знать всё равно надо.
+    const val PREF_TELEGRAM_ONLY_MODE = "pref_telegram_only_mode"
 
-    // Temporary: new installations must start only with a subscription supplied
-    // by the user. Keep the URL constant to recognize legacy saved profiles.
-    const val FREE_SUBSCRIPTION_ENABLED = false
+    // Бесплатный Telegram-канал: подписка, через которую человек без ключа может
+    // дойти до бота и купить доступ. Живёт рядом с платной и переключается
+    // автоматически, см. handler/PlanManager.kt.
+    const val FREE_SUBSCRIPTION_ENABLED = true
     const val FREE_SUB_URL = "https://import.a4secure.xyz/free"
     const val FREE_SUB_REMARKS = "Бесплатно"
 

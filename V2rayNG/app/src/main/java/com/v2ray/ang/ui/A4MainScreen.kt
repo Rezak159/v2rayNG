@@ -3,7 +3,6 @@ package com.v2ray.ang.ui
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.net.Uri
 import com.v2ray.ang.extension.DIVISOR
 import com.v2ray.ang.extension.THRESHOLD
 import androidx.compose.animation.AnimatedContent
@@ -74,6 +73,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.VpnKey
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -140,7 +140,9 @@ import com.v2ray.ang.dto.entities.ServersCache
 import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.PlanManager
 import com.v2ray.ang.ui.main.MainViewModel
+import com.v2ray.ang.util.SubLinkUtil
 import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -179,6 +181,10 @@ fun A4MainScreen(
     onOpenLogcat: () -> Unit,
     onOpenPerAppProxy: () -> Unit,
     onImportSubscription: (String) -> Unit,
+    onConnectFreeAccess: () -> Unit,
+    clipboardKeyAvailable: Boolean,
+    onClipboardKeyConnect: () -> Unit,
+    onClipboardKeyDismiss: () -> Unit,
     appUpdate: AppUpdate?,
     isDownloadingUpdate: Boolean,
     downloadProgress: Float,
@@ -189,18 +195,24 @@ fun A4MainScreen(
     // Читаем state.groups здесь, во внешнем scope, чтобы он пересобирался после
     // импорта подписки. Иначе state читается только внутри дочерних лямбд, внешний
     // scope не подписан на изменения — и экран не переключался бы до перезапуска.
-    val hasUsableSubscription = remember(state.groups) {
-        MmkvManager.decodeSubscriptions().any { subscription ->
-            MmkvManager.decodeServerList(subscription.guid).isNotEmpty()
-        }
+    // Ключи пересчёта: набор подписок меняется при импорте, а активный сервер —
+    // при любом переключении доступа (в т.ч. автоматическом возврате на бесплатный).
+    val plan = remember(state.groups, state.selectedGroupId, state.selectedGuid) {
+        PlanManager.currentPlan()
+    }
+    // Платная была, но кончилась — на бесплатном об этом надо сказать прямо,
+    // иначе «работает только Telegram» выглядит как поломка.
+    val paidRanOut = remember(state.groups, state.selectedGroupId, state.selectedGuid) {
+        PlanManager.paidRanOut()
     }
 
     A4Theme {
         Box(Modifier.fillMaxSize()) {
-            if (!hasUsableSubscription) {
+            if (plan == PlanManager.Plan.NONE) {
                 SubscriptionEntry(
                     isLoading = isLoading,
                     onImportSubscription = onImportSubscription,
+                    onConnectFreeAccess = onConnectFreeAccess,
                 )
             } else {
                 A4AppHome(
@@ -213,19 +225,34 @@ fun A4MainScreen(
                     onSelectServer = onSelectServer,
                     onOpenLogcat = onOpenLogcat,
                     onOpenPerAppProxy = onOpenPerAppProxy,
+                    onFreePlan = plan == PlanManager.Plan.FREE,
+                    paidRanOut = paidRanOut,
+                    isLoading = isLoading,
+                    onImportSubscription = onImportSubscription,
                 )
             }
-            appUpdate?.let { update ->
-                A4UpdateBanner(
-                    update = update,
-                    isDownloading = isDownloadingUpdate,
-                    downloadProgress = downloadProgress,
-                    onClick = onInstallUpdate,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .statusBarsPadding()
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
-                )
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                appUpdate?.let { update ->
+                    A4UpdateBanner(
+                        update = update,
+                        isDownloading = isDownloadingUpdate,
+                        downloadProgress = downloadProgress,
+                        onClick = onInstallUpdate,
+                    )
+                }
+                AnimatedVisibility(visible = clipboardKeyAvailable) {
+                    A4ClipboardKeyBanner(
+                        busy = isLoading,
+                        onConnect = onClipboardKeyConnect,
+                        onDismiss = onClipboardKeyDismiss,
+                    )
+                }
             }
         }
     }
@@ -298,6 +325,107 @@ private fun A4UpdateBanner(
     }
 }
 
+/**
+ * Баннер «Найден ключ доступа»: ссылку из буфера обмена можно подключить в одно
+ * нажатие. Сам текст ключа не показываем и не логируем — в буфере могут лежать
+ * чужие данные.
+ */
+@Composable
+private fun A4ClipboardKeyBanner(
+    busy: Boolean,
+    onConnect: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // busy — общий флаг загрузки экрана: он поднимается и когда человек включает
+    // бесплатный доступ на стартовом экране. «Подключаем…» показываем только если
+    // работу начали именно этой кнопкой, иначе надпись меняется сама по себе.
+    var requested by remember { mutableStateOf(false) }
+    LaunchedEffect(busy) { if (!busy) requested = false }
+    val connecting = busy && requested
+    Column(
+        modifier
+            .fillMaxWidth()
+            .shadow(18.dp, RoundedCornerShape(18.dp), clip = false)
+            .clip(RoundedCornerShape(18.dp))
+            .background(A4Ink)
+            .padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Ключ в кружке: баннер прилетает поверх экрана, и по одной иконке
+            // сразу видно, о чём он, ещё до чтения заголовка.
+            Box(
+                Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(A4Red.copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.VpnKey,
+                    contentDescription = null,
+                    tint = A4Red,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Найден ключ доступа",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "Ссылка лежит в буфере обмена — подключить её?",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.66f),
+                )
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(12.dp))
+                    .clickable(onClick = onDismiss)
+                    .padding(vertical = 11.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "СКРЫТЬ",
+                    style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 0.8.sp),
+                    color = Color.White.copy(alpha = 0.72f),
+                )
+            }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (connecting) A4Red.copy(alpha = 0.5f) else A4Red)
+                    .clickable(enabled = !busy) {
+                        requested = true
+                        onConnect()
+                    }
+                    .padding(vertical = 11.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    if (connecting) "ПОДКЛЮЧАЕМ…" else "ПОДКЛЮЧИТЬ",
+                    style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 0.8.sp),
+                    color = Color.White,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun A4AppHome(
     mainViewModel: MainViewModel,
@@ -309,6 +437,10 @@ private fun A4AppHome(
     onSelectServer: (String) -> Unit,
     onOpenLogcat: () -> Unit,
     onOpenPerAppProxy: () -> Unit,
+    onFreePlan: Boolean,
+    paidRanOut: Boolean,
+    isLoading: Boolean,
+    onImportSubscription: (String) -> Unit,
 ) {
     val servers by mainViewModel.serversForGroup(selectedGroupId).collectAsStateWithLifecycle()
     // speed/session держим как State и отдаём вниз лямбдами: тогда тик раз в секунду
@@ -320,6 +452,14 @@ private fun A4AppHome(
     val isSelectedServerReady = selectedServer != null && selectedServer.guid == selectedGuid
     val canControlConnection = isRunning || isSelectedServerReady
     var tab by remember { mutableStateOf(A4Tab.Home) }
+    // Ключ вводят и в Настройках. Как только доступ стал полным, возвращаем
+    // человека на Главную: там кнопка подключения и видно, что оплата дошла,
+    // — иначе после «успешно» он остаётся смотреть на исчезнувшее поле ввода.
+    var wasOnFreePlan by remember { mutableStateOf(onFreePlan) }
+    LaunchedEffect(onFreePlan) {
+        if (wasOnFreePlan && !onFreePlan) tab = A4Tab.Home
+        wasOnFreePlan = onFreePlan
+    }
     // Вход в список серверов анимируем только один раз за сессию экрана: сам таб
     // пересоздаётся при каждом переключении вкладок (AnimatedContent), а флаг
     // живёт здесь и переживает такие переключения.
@@ -417,6 +557,10 @@ private fun A4AppHome(
                                 sessionSeconds = { sessionSeconds.longValue },
                                 server = selectedServer,
                                 subscription = subscription,
+                                onFreePlan = onFreePlan,
+                                paidRanOut = paidRanOut,
+                                busy = isLoading,
+                                onImportSubscription = onImportSubscription,
                                 onConnectionClick = {
                                     if (!isRunning) connecting = true
                                     onConnectionClick()
@@ -437,6 +581,8 @@ private fun A4AppHome(
                             A4Tab.Settings -> A4SettingsTab(
                                 onOpenLogcat = onOpenLogcat,
                                 onOpenPerAppProxy = onOpenPerAppProxy,
+                                busy = isLoading,
+                                onImportSubscription = onImportSubscription,
                             )
                         }
                     }
@@ -789,6 +935,10 @@ private fun HomeTab(
     sessionSeconds: () -> Long,
     server: ServersCache?,
     subscription: SubscriptionItem?,
+    onFreePlan: Boolean,
+    paidRanOut: Boolean,
+    busy: Boolean,
+    onImportSubscription: (String) -> Unit,
     onConnectionClick: () -> Unit,
     onOpenServers: () -> Unit,
 ) {
@@ -840,6 +990,14 @@ private fun HomeTab(
                     color = A4Ink,
                 )
             }
+        }
+        if (onFreePlan) {
+            FreePlanCard(
+                afterExpiry = paidRanOut,
+                busy = busy,
+                onImportSubscription = onImportSubscription,
+                modifier = Modifier.padding(bottom = 10.dp),
+            )
         }
         StatusHeadline(conn)
 
@@ -1435,6 +1593,7 @@ private fun CheckMark() {
 private fun SubscriptionEntry(
     isLoading: Boolean,
     onImportSubscription: (String) -> Unit,
+    onConnectFreeAccess: () -> Unit,
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -1442,6 +1601,12 @@ private fun SubscriptionEntry(
     // где вообще берётся ключ, и только потом просить его вставить.
     var keyEntryExpanded by remember { mutableStateOf(false) }
     var noTelegramHintExpanded by remember { mutableStateOf(false) }
+    // isLoading общий на весь экран: его же поднимает импорт ключа из поля ввода
+    // и баннер буфера обмена. «Подключаем…» на этой кнопке показываем, только
+    // если бесплатный доступ включили именно ею.
+    var freeAccessRequested by remember { mutableStateOf(false) }
+    LaunchedEffect(isLoading) { if (!isLoading) freeAccessRequested = false }
+    val freeAccessConnecting = isLoading && freeAccessRequested
     val siteUrl = AppConfig.SITE_URL
     Box(
         Modifier
@@ -1547,7 +1712,7 @@ private fun SubscriptionEntry(
                         textAlign = TextAlign.Center,
                     )
                     AnimatedVisibility(visible = noTelegramHintExpanded) {
-                        Box(
+                        Column(
                             Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(14.dp))
@@ -1556,8 +1721,26 @@ private fun SubscriptionEntry(
                                 .padding(horizontal = 16.dp, vertical = 14.dp),
                         ) {
                             Text(
+                                "Включим бесплатный доступ: через него работает только Telegram — " +
+                                    "этого хватит, чтобы дойти до бота и забрать ключ.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = A4TextMuted,
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            EntryAction(
+                                label = if (freeAccessConnecting) "ПОДКЛЮЧАЕМ…" else "ВКЛЮЧИТЬ БЕСПЛАТНЫЙ ДОСТУП",
+                                filled = true,
+                                onClick = {
+                                    if (isLoading) return@EntryAction
+                                    haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                                    freeAccessRequested = true
+                                    onConnectFreeAccess()
+                                },
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
                                 buildAnnotatedString {
-                                    append("Инструкция, что делать, если Telegram не открывается, есть на сайте: ")
+                                    append("Если не помогло, инструкция есть на сайте: ")
                                     withLink(
                                         LinkAnnotation.Url(
                                             url = siteUrl,
@@ -1585,6 +1768,106 @@ private fun SubscriptionEntry(
     }
 }
 
+/**
+ * Бесплатный доступ на Главной.
+ *
+ * Пока платного ключа нет, карточка висит поверх всего остального: это
+ * единственное место (вместе с Настройками), откуда человек на бесплатном
+ * может вставить купленный ключ — стартовый экран с полем ввода уже не
+ * показывается, серверы-то есть.
+ */
+@Composable
+private fun FreePlanCard(
+    afterExpiry: Boolean,
+    busy: Boolean,
+    onImportSubscription: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    var keyEntryExpanded by remember { mutableStateOf(false) }
+    // На бесплатном в туннель пускают только Telegram: без клиента доступ
+    // включится, но пользоваться им будет нечем — говорим об этом заранее.
+    val telegramInstalled = remember { PlanManager.hasTelegramInstalled(context) }
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(A4PaperCard)
+            .border(1.dp, A4Border, RoundedCornerShape(14.dp))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        if (!telegramInstalled) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(A4Red.copy(alpha = 0.12f))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Rounded.WarningAmber,
+                    contentDescription = null,
+                    tint = A4Red,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Telegram не установлен — на бесплатном доступе работает только он",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = A4Ink,
+                )
+            }
+        }
+        Text(
+            if (afterExpiry) "Подписка закончилась" else "Бесплатный доступ",
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+            color = A4Ink,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            if (afterExpiry) {
+                "Мы вернули бесплатный доступ — через VPN работает только Telegram. " +
+                    "Продли подписку у бота, и весь трафик снова пойдёт через туннель."
+            } else {
+                "Через VPN работает только Telegram. Забери ключ у бота, " +
+                    "чтобы пустить через туннель весь трафик."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = A4TextMuted,
+        )
+        Spacer(Modifier.height(12.dp))
+        AnimatedVisibility(visible = !keyEntryExpanded) {
+            Column {
+                EntryAction(
+                    label = if (afterExpiry) "ПРОДЛИТЬ В TELEGRAM" else "ПОЛУЧИТЬ КЛЮЧ В TELEGRAM",
+                    filled = true,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                        Utils.openUri(context, AppConfig.TELEGRAM_BOT_URL)
+                    },
+                )
+                Text(
+                    "У меня есть ключ",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { keyEntryExpanded = true }
+                        .padding(vertical = 12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = A4TextMuted,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        AnimatedVisibility(visible = keyEntryExpanded) {
+            SubscriptionLinkEntry(busy = busy, onSubmit = onImportSubscription)
+        }
+    }
+}
+
 /** Кнопка первого запуска: [filled] — основная (красная), иначе тихая рамка. */
 @Composable
 private fun EntryAction(label: String, filled: Boolean, onClick: () -> Unit) {
@@ -1598,20 +1881,33 @@ private fun EntryAction(label: String, filled: Boolean, onClick: () -> Unit) {
                 if (filled) Modifier
                 else Modifier.border(1.5.dp, A4Border, RoundedCornerShape(10.dp)),
             )
-            .padding(vertical = 16.dp),
+            // Горизонтальный отступ обязателен: длинные подписи вроде «ВКЛЮЧИТЬ
+            // БЕСПЛАТНЫЙ ДОСТУП» иначе упираются в края кнопки. Если строка всё
+            // равно не влезает — переносим её и центрируем, а не режем.
+            .padding(horizontal = 22.dp, vertical = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             label,
-            style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, letterSpacing = 1.sp),
+            style = MaterialTheme.typography.labelLarge.copy(
+                fontSize = 15.sp,
+                letterSpacing = 0.8.sp,
+                lineHeight = 20.sp,
+            ),
             color = if (filled) Color.White else A4Ink,
+            textAlign = TextAlign.Center,
         )
     }
 }
 
 @Composable
-private fun SubscriptionLinkEntry(busy: Boolean, onSubmit: (String) -> Unit) {
+internal fun SubscriptionLinkEntry(busy: Boolean, onSubmit: (String) -> Unit) {
     var subscriptionUrl by remember { mutableStateOf("") }
+    // busy общий на экран (его поднимает и бесплатный доступ, и баннер буфера) —
+    // «Подключаем…» показываем, только если ключ отправили из этого поля.
+    var submitted by remember { mutableStateOf(false) }
+    LaunchedEffect(busy) { if (!busy) submitted = false }
+    val submitting = busy && submitted
     var focused by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
@@ -1620,12 +1916,13 @@ private fun SubscriptionLinkEntry(busy: Boolean, onSubmit: (String) -> Unit) {
     fun submit() {
         if (!canSubmit) return
         val trimmed = subscriptionUrl.trim()
-        if (Uri.parse(trimmed).host != AppConfig.SUB_KEY_HOST) {
+        if (!SubLinkUtil.isSubLink(trimmed)) {
             haptic.performHapticFeedback(HapticFeedbackType.Reject)
             error = true
             return
         }
         haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+        submitted = true
         onSubmit(trimmed)
     }
 
@@ -1699,7 +1996,7 @@ private fun SubscriptionLinkEntry(busy: Boolean, onSubmit: (String) -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                if (busy) "ПОДКЛЮЧАЕМ…" else "ПОДКЛЮЧИТЬ",
+                if (submitting) "ПОДКЛЮЧАЕМ…" else "ПОДКЛЮЧИТЬ",
                 style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, letterSpacing = 1.sp),
                 color = Color.White,
             )

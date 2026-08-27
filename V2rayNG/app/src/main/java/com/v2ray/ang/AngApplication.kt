@@ -8,9 +8,10 @@ import androidx.work.WorkManager
 import com.tencent.mmkv.MMKV
 import com.v2ray.ang.AppConfig.ANG_PACKAGE
 import com.v2ray.ang.handler.AppLocaleManager
-import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.PlanManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.ui.compose.ThemeManager
+import com.v2ray.ang.util.LogUtil
 
 class AngApplication : Application() {
     companion object {
@@ -46,21 +47,23 @@ class AngApplication : Application() {
         // Ensure critical preference defaults are present in MMKV early
         SettingsManager.initApp(this)
 
-        removeDisabledFreeSubscription()
+        syncPlan()
 
         // Initialize theme state from MMKV
         ThemeManager.refresh()
     }
 
     /**
-     * Removes only the legacy Telegram-only subscription restored by Android Backup.
-     * Paid subscriptions and every other app setting stay intact.
+     * Свести доступ с тем, что осталось от подписок: истёкшая платная должна
+     * уступить место бесплатному Telegram-каналу ещё до того, как кто-нибудь
+     * запустит туннель — из плитки быстрых настроек, виджета или после
+     * перезагрузки. Только перестановка уже сохранённого, без сети.
      */
-    private fun removeDisabledFreeSubscription() {
-        if (AppConfig.FREE_SUBSCRIPTION_ENABLED) return
-
-        MmkvManager.decodeSubscriptions()
-            .filter { it.subscription.url == AppConfig.FREE_SUB_URL }
-            .forEach { MmkvManager.removeSubscription(it.guid) }
+    private fun syncPlan() {
+        try {
+            PlanManager.syncPlan(allowNetwork = false)
+        } catch (e: Exception) {
+            LogUtil.e(AppConfig.TAG, "Failed to sync access plan on startup", e)
+        }
     }
 }

@@ -8,7 +8,6 @@ import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.util.Base64
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
@@ -28,7 +27,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
@@ -72,6 +73,7 @@ import com.v2ray.ang.ui.settings.SettingsActivity
 import com.v2ray.ang.ui.subscription.SubSettingActivity
 import com.v2ray.ang.ui.userasset.UserAssetActivity
 import com.v2ray.ang.util.LogUtil
+import com.v2ray.ang.util.SubLinkUtil
 import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -94,6 +96,9 @@ class MainActivity : HelperBaseComponentActivity() {
     private var showInstallPermissionReminder by mutableStateOf(false)
     private var pendingUpdateApk: File? = null
     private var appPolicyState by mutableStateOf<AppPolicyState>(AppPolicyState.Allowed)
+
+    /** Ключ доступа, найденный в буфере обмена; показывается баннером на главном экране. */
+    private var clipboardSubLink by mutableStateOf<String?>(null)
 
     private val policyNetworkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) = refreshAppPolicy()
@@ -150,6 +155,18 @@ class MainActivity : HelperBaseComponentActivity() {
         importFromIntent(intent)
         refreshAppPolicy()
         checkForAppUpdate()
+        collectViewModelEvents()
+    }
+
+    /** События, которые может выполнить только Activity. */
+    private fun collectViewModelEvents() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                mainViewModel.viewModelEvent.collect { event ->
+                    if (event is MainEvent.RestartService) restartV2Ray()
+                }
+            }
+        }
     }
 
     override fun onStart() {
@@ -165,6 +182,16 @@ class MainActivity : HelperBaseComponentActivity() {
     override fun onResume() {
         super.onResume()
         refreshAppPolicy()
+        // Платная могла истечь (или, наоборот, продлиться) за время, пока экрана
+        // не было на виду — приводим доступ в соответствие с подписками.
+        lifecycleScope.launch { mainViewModel.syncPlan() }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // Начиная с Android 10 буфер обмена отдаётся только сфокусированной активити,
+        // поэтому проверяем именно здесь, а не в onResume.
+        if (hasFocus) checkClipboardForKey()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -188,6 +215,10 @@ class MainActivity : HelperBaseComponentActivity() {
             onOpenLogcat = { navigateTo(MainDestination.Logcat) },
             onOpenPerAppProxy = { navigateTo(MainDestination.PerAppProxy) },
             onImportSubscription = ::importSubscriptionFromEntry,
+            onConnectFreeAccess = { mainViewModel.onAction(MainAction.ConnectFreeAccess) },
+            clipboardKeyAvailable = clipboardSubLink != null,
+            onClipboardKeyConnect = ::connectClipboardKey,
+            onClipboardKeyDismiss = ::dismissClipboardKey,
             appUpdate = appUpdate,
             isDownloadingUpdate = isDownloadingUpdate,
             downloadProgress = updateDownloadProgress,
@@ -288,27 +319,45 @@ class MainActivity : HelperBaseComponentActivity() {
         importSubscriptionFromEntry(url)
     }
 
-    private fun importSubscriptionFromEntry(value: String) {
-        val raw = value.trim()
-        val uri = Uri.parse(raw)
-        val subscriptionUrl = if (
-            uri.host == AppConfig.APP_LINK_HOST &&
-            uri.path?.startsWith(AppConfig.APP_LINK_SUB_PATH) == true
-        ) {
-            val payload = uri.path?.removePrefix(AppConfig.APP_LINK_SUB_PATH)
-                ?.takeIf(String::isNotEmpty)
-                ?: return toastError(R.string.toast_failure)
-            try {
-                val flags = Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
-                String(Base64.decode(payload, flags), Charsets.UTF_8)
-            } catch (_: IllegalArgumentException) {
-                return toastError(R.string.toast_failure)
-            }
-        } else {
-            raw
+    /**
+     * Проверить буфер обмена на наш ключ доступа и показать баннер.
+     *
+     * Содержимое буфера никуда не логируется — там могут быть чужие данные.
+     */
+    private fun checkClipboardForKey() {
+        val link = SubLinkUtil.resolve(Utils.getClipboard(this))
+        if (link == null) {
+            clipboardSubLink = null
+            return
         }
+        if (SubLinkUtil.fingerprint(link) ==
+            MmkvManager.decodeSettingsString(AppConfig.PREF_DISMISSED_SUB_LINK)
+        ) {
+            clipboardSubLink = null
+            return
+        }
+        if (MmkvManager.decodeSubscriptions().any { it.subscription.url == link }) {
+            clipboardSubLink = null
+            return
+        }
+        clipboardSubLink = link
+    }
 
-        if (!Utils.isValidSubUrl(subscriptionUrl)) {
+    private fun connectClipboardKey() {
+        val link = clipboardSubLink ?: return
+        clipboardSubLink = null
+        importSubscriptionFromEntry(link)
+    }
+
+    private fun dismissClipboardKey() {
+        val link = clipboardSubLink ?: return
+        MmkvManager.encodeSettings(AppConfig.PREF_DISMISSED_SUB_LINK, SubLinkUtil.fingerprint(link))
+        clipboardSubLink = null
+    }
+
+    private fun importSubscriptionFromEntry(value: String) {
+        val subscriptionUrl = SubLinkUtil.resolve(value)
+        if (subscriptionUrl == null) {
             toastError(R.string.toast_failure)
             return
         }
@@ -323,7 +372,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 MmkvManager.removeSubscription(it.guid)
             }
 
-        mainViewModel.onAction(MainAction.ImportBatchConfig(subscriptionUrl))
+        mainViewModel.onAction(MainAction.ImportSubscriptionKey(subscriptionUrl))
     }
 
     private fun shareToClipboard(guid: String): Boolean =

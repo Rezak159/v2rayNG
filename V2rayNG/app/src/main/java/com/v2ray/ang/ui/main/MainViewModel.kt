@@ -15,6 +15,7 @@ import com.v2ray.ang.dto.entities.SubscriptionCache
 import com.v2ray.ang.extension.isComplexType
 import com.v2ray.ang.extension.matchesPattern
 import com.v2ray.ang.extension.moveItem
+import com.v2ray.ang.handler.PlanManager
 import com.v2ray.ang.ui.base.BaseViewModel
 import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.CancellationException
@@ -184,6 +185,8 @@ class MainViewModel(
             is MainAction.RemoveServer -> removeServerAndRefresh(action.guid)
             is MainAction.Search -> filterConfig(action.query)
             is MainAction.ImportBatchConfig -> importBatchConfig(action.configText)
+            is MainAction.ImportSubscriptionKey -> importSubscriptionKey(action.url)
+            MainAction.ConnectFreeAccess -> connectFreeAccess()
             is MainAction.LocateHandled -> consumeLocateTarget(action.target)
             is MainAction.ShareQRCode -> {
                 val bitmap = dataSource.share2QRCode(action.guid)
@@ -401,6 +404,94 @@ class MainViewModel(
                 }
             }
         }
+    }
+
+    /**
+     * Ввод платного ключа.
+     *
+     * Импортируем подписку и одной транзакцией переводим приложение на полный
+     * доступ: бесплатная гаснет, режим «только Telegram» снимается, активным
+     * становится сервер из платной подписки. Если этого не сделать, человек
+     * заплатит и получит VPN, работающий в одном Telegram.
+     */
+    private fun importSubscriptionKey(url: String) {
+        launchLoading {
+            withContext(ioDispatcher) {
+                try {
+                    val (count, countSub) = dataSource.importBatchConfig(url, "", true)
+                    if (count <= 0 && countSub <= 0) {
+                        toastError(R.string.toast_failure)
+                        return@withContext
+                    }
+                    val guid = PlanManager.switchToPaid()
+                    if (guid == null) {
+                        toastError(R.string.toast_failure)
+                        return@withContext
+                    }
+                    applyActivePlan(guid)
+                    toastSuccess(R.string.toast_success)
+                    if (uiState.value.isRunning) _viewModelEvent.send(MainEvent.RestartService)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (e: Exception) {
+                    LogUtil.e(AppConfig.TAG, "Failed to import subscription key", e)
+                    toastError(R.string.toast_failure)
+                }
+            }
+        }
+    }
+
+    /**
+     * Поднять бесплатный Telegram-канал — вход для тех, у кого не открывается
+     * Telegram и ключ взять негде.
+     */
+    private fun connectFreeAccess() {
+        launchLoading {
+            withContext(ioDispatcher) {
+                try {
+                    val guid = PlanManager.activateFreePlan()
+                    if (guid == null) {
+                        toastError(R.string.toast_failure)
+                        return@withContext
+                    }
+                    applyActivePlan(guid)
+                    if (uiState.value.isRunning) _viewModelEvent.send(MainEvent.RestartService)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (e: Exception) {
+                    LogUtil.e(AppConfig.TAG, "Failed to connect free access", e)
+                    toastError(R.string.toast_failure)
+                }
+            }
+        }
+    }
+
+    /**
+     * Свести доступ с подписками и, если состояние поменялось, перерисовать экран.
+     * Возвращает true, если переключение произошло.
+     */
+    suspend fun syncPlan(): Boolean = withContext(ioDispatcher) {
+        val guid = try {
+            PlanManager.syncPlan()
+        } catch (e: Exception) {
+            LogUtil.e(AppConfig.TAG, "Failed to sync access plan", e)
+            null
+        } ?: return@withContext false
+        applyActivePlan(guid)
+        if (uiState.value.isRunning) _viewModelEvent.send(MainEvent.RestartService)
+        true
+    }
+
+    /**
+     * Перевести список серверов на подписку [guid]: она стала активной, и вкладка
+     * «Серверы» должна показывать именно её — вторая подписка в интерфейсе не
+     * существует.
+     */
+    private suspend fun applyActivePlan(guid: String) {
+        dataSource.setSelectedSubscriptionId(guid)
+        _uiState.update { it.copy(selectedGroupId = guid) }
+        setupGroupTab(forceRefresh = true).join()
+        refreshSelectedGuid()
     }
 
     private fun importConfigViaSub() {

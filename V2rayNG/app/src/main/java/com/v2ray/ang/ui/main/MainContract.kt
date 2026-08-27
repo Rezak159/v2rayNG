@@ -2,6 +2,7 @@ package com.v2ray.ang.ui.main
 
 import com.v2ray.ang.dto.GroupMapItem
 import com.v2ray.ang.dto.LocateTarget
+import com.v2ray.ang.ui.base.ViewModelEvent
 
 /**
  * Main UI state
@@ -56,5 +57,20 @@ sealed interface MainAction {
 
     data class ImportBatchConfig(val configText: String) : MainAction
 
+    /** Ввод платного ключа: импорт подписки и переход на полный доступ. */
+    data class ImportSubscriptionKey(val url: String) : MainAction
+
+    /** «Telegram не открывается»: поднять бесплатный Telegram-канал. */
+    data object ConnectFreeAccess : MainAction
+
     data class LocateHandled(val target: LocateTarget) : MainAction
+}
+
+/**
+ * То, что умеет только Activity: у ViewModel нет ни доступа к VpnService.prepare,
+ * ни права дёргать сервис напрямую.
+ */
+sealed interface MainEvent : ViewModelEvent {
+    /** Подписка сменилась на ходу — туннель надо перезапустить. */
+    data object RestartService : MainEvent
 }
