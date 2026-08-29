@@ -1,0 +1,118 @@
+# A4VPN: российские приложения, рекомендованные к обходу туннеля.
+#
+# Канонический источник списка. Выкладывается на https://app.a4vpn.net/bypass-apps.txt —
+# приложение тянет его оттуда раз в сутки, а RecommendedBypassApps.builtInPackageNames держит
+# копию как фолбэк на случай, если сеть недоступна. RecommendedBypassAppsTest следит, чтобы
+# файл и копия в коде не разъезжались.
+#
+# Формат: одно имя пакета в строке, # начинает комментарий. Принимается от 5 до 2000 записей.
+# Отбор приложений: https://rks.global/ru/research/vpn-detection/
+
+
+# Маркетплейсы и доставка
+com.wildberries.ru
+ru.ozon.app.android
+ru.ozon.select
+ru.sbermegamarket.app
+ru.goods.marketplace
+com.avito.android
+ru.samokat.mobile
+ru.yandex.market
+com.gloriajeans.mobile
+ru.kfc.kfc_delivery
+com.icemobile.lenta.prod
+ru.letu
+ru.filit.mvideo.b2c
+ru.tander.magnit
+ru.perekrestok.app
+com.octopod.russianpost.client.android
+ru.pyaterochka.app.browser
+ru.sbcs.store
+ru.sportmaster.app
+ru.cian.main
+ru.burgerking
+ru.sunlight.sunlight
+ru.quickresto.loyalty.shaurmashop
+ru.aliexpress.buyer
+
+# Банки и платежи
+ru.sberbankmobile
+com.idamob.tinkoff.bank
+ru.vtb24.mobilebanking.android
+ru.alfabank.mobile.android
+ru.raiffeisennews
+com.openbank
+ru.gazprombank.android.mobilebank.app
+ru.rshb.dbo
+ru.mkb.mobile
+ru.psbank.mobile
+com.akbars.bankok
+ru.mts.money
+ru.yoo.money
+ru.nspk.mirpay
+ru.ozon.fintech.finance
+ru.tinkoff.investing
+
+
+# Госуслуги и документы
+ru.gosuslugi.pgu
+ru.rosreestr.rr
+ru.nalog.lk
+ru.fss.eln
+ru.gosuslugi.goskey
+ru.rostel
+ru.gosuslugi.culture
+com.gnivts.selfemployed
+
+# Связь и операторы
+ru.mts.mymts
+ru.megafon.mlk
+ru.beeline.services
+ru.tele2.mytele2
+ru.tinkoff.mvno
+
+# Экосистемы, соцсети, медиа
+com.yandex.browser
+ru.yandex.yandexmaps
+ru.yandex.music
+ru.yandex.searchplugin
+ru.yandex.searchapp
+ru.kinopoisk
+com.vkontakte.android
+com.vk.im
+com.vk.video
+com.vk.music
+ru.ok.android
+ru.oneme.app
+ru.rutube.app
+ru.zvuk.player
+ru.plus.bookmate
+
+# Магазины приложений, карты, транспорт
+ru.vk.store
+ru.dublgis.dgismobile
+ru.rzd.pass
+ru.aeroflot
+ru.mos.transport
+ru.auto.ara
+ru.x_cab
+soft.gelios.com.ecoplus
+ru.yandex.taxi
+com.contentekb.edemrf
+today.yourdrive.lite
+ru.bus62.SmartTransport
+ru.tutu.tutu_emp
+
+# Прочее
+com.kms.free
+ru.dns.shop
+ru.pochta.app
+biz.growapp.winline
+ru.yandex.key
+ru.yandex.androidkeyboard
+ru.yandex.taximeter
+ru.farpost.dromfilter
+ru.e_num
+ru.drom.pdd.android.app
+ru.cardsmobile.mw3
+ru.drom.numbers
