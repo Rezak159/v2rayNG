@@ -38,6 +38,7 @@ ru.aliexpress.buyer
 # Банки и платежи
 ru.sberbankmobile
 com.idamob.tinkoff.bank
+com.idamob.tinkoff.android
 ru.vtb24.mobilebanking.android
 ru.alfabank.mobile.android
 ru.raiffeisennews
