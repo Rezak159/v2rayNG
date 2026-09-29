@@ -5,6 +5,7 @@ import android.content.Context
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.AppInfo
 import com.v2ray.ang.dto.UrlContentRequest
+import com.v2ray.ang.handler.BypassAppListManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.handler.SettingsManager
@@ -64,15 +65,21 @@ class PerAppProxyViewModel(application: Application) : BaseViewModel(application
         SettingsChangeManager.makeRestartService()
     }
 
-    private fun loadBlacklist(): Set<String> {
-        return MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET)?.toSet() ?: emptySet()
+    private fun loadBlacklist(): Set<String> = if (MmkvManager.decodeSettingsBool(AppConfig.PREF_BYPASS_APPS, true)) {
+        BypassAppListManager.currentSelection()
+    } else {
+        MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET)?.toSet() ?: emptySet()
     }
 
     private fun replaceBlacklist(newBlacklist: Set<String>) {
         if (newBlacklist == _blacklist.value) return
 
-        _blacklist.value = newBlacklist
-        MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET, newBlacklist.toMutableSet())
+        _blacklist.value = if (_bypassApps.value) {
+            BypassAppListManager.replaceUserSelection(newBlacklist)
+        } else {
+            MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET, newBlacklist.toMutableSet())
+            newBlacklist
+        }
     }
 
     // Per‑app proxy switch

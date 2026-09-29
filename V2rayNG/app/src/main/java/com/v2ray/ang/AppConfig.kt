@@ -69,9 +69,14 @@ object AppConfig {
     const val APP_POLICY_URL = "https://app.a4vpn.net/policy.json"
     const val APP_DOWNLOAD_PAGE_URL = "https://app.a4vpn.net/download"
     const val TELEMETRY_URL = "https://app.a4vpn.net/telemetry/subscription-refresh"
+    const val BYPASS_APP_LIST_URL = "https://app.a4vpn.net/routing/bypass-packages.txt"
     const val PREF_INSTALLATION_ID = "pref_installation_id"
     const val PREF_APP_POLICY = "pref_app_policy"
     const val PREF_APP_POLICY_FIRST_SEEN = "pref_app_policy_first_seen"
+    const val PREF_SERVER_BYPASS_APP_SET = "pref_server_bypass_app_set"
+    const val PREF_MANUAL_BYPASS_APP_SET = "pref_manual_bypass_app_set"
+    const val PREF_SERVER_BYPASS_APP_EXCLUDED_SET = "pref_server_bypass_app_excluded_set"
+    const val PREF_BYPASS_APP_SELECTION_MIGRATED = "pref_bypass_app_selection_migrated"
     // Отпечаток ключа из буфера обмена, который пользователь скрыл: повторно
     // баннер для той же ссылки не показываем.
     const val PREF_DISMISSED_SUB_LINK = "pref_dismissed_sub_link"

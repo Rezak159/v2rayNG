@@ -1,0 +1,41 @@
+# A4VPN: приложения, которые в режиме обхода идут напрямую, без VPN.
+# Один Android package ID в строке. Комментарии и пустые строки игнорируются.
+
+# Государственные сервисы
+ru.rostel
+ru.gosuslugi.auto
+ru.gosuslugi.goskey
+
+# Банки и платежи
+ru.sberbankmobile
+com.idamob.tinkoff.android
+ru.vtb24.mobilebanking.android
+logo.com.mbanking
+ru.akbars.mobile
+ru.yoomoney
+ru.nspk.mirpay
+
+# Яндекс, VK и Mail.ru
+ru.yandex.searchplugin
+ru.yandex.yandexmaps
+ru.yandex.taxi
+ru.yandex.mail
+com.vkontakte.android
+ru.mail.mailapp
+ru.ok.android
+ru.oneme.app
+
+# Покупки, объявления и жильё
+ru.ozon.app.android
+com.wildberries.ru
+ru.avito.android
+ru.cian.main
+ru.drom.ru
+
+# Доставка, транспорт и российские мобильные операторы
+com.octopod.russianpost.client.android
+com.logistic.sdek
+ru.rzd.pass
+ru.mts.mymts
+ru.beeline.services
+ru.tele2.mytele2

@@ -36,6 +36,7 @@ object SubscriptionTelemetry {
                 "abi" to (Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"),
             )
             DirectNetworkHttp.postJson(AngApplication.application, AppConfig.TELEMETRY_URL, JsonUtil.toJson(payload))
+            BypassAppListManager.refresh(context)
         }
     }
 
