@@ -45,7 +45,7 @@ jobs:
       id: cache-libhevtun-restore
       uses: actions/cache/restore@v6
       with:
-        path: ${{ github.workspace }}/libs
+        path: ${{ github.workspace }}/V2rayNG/app/libs
         key: libhevtun-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('.git/modules/hev-socks5-tunnel/HEAD') }}-${{ hashFiles('compile-hevtun.sh') }}
 
     - name: Build libhevtun
@@ -57,12 +57,8 @@ jobs:
       if: steps.cache-libhevtun-restore.outputs.cache-hit != 'true'
       uses: actions/cache/save@v6
       with:
-        path: ${{ github.workspace }}/libs
+        path: ${{ github.workspace }}/V2rayNG/app/libs
         key: libhevtun-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('.git/modules/hev-socks5-tunnel/HEAD') }}-${{ hashFiles('compile-hevtun.sh') }}
-
-    - name: Copy libhevtun
-      run: |
-        cp -r ${{ github.workspace }}/libs ${{ github.workspace }}/V2rayNG/app
 
     - name: Fetch AndroidLibXrayLite tag
       run: |
