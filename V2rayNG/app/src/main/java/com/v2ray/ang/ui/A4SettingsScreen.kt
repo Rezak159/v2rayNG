@@ -98,6 +98,8 @@ fun A4SettingsScreen(
     onOpenPerAppProxy: () -> Unit,
     busy: Boolean = false,
     onImportSubscription: (String) -> Unit = {},
+    isCheckingUpdate: Boolean = false,
+    onCheckUpdate: () -> Unit = {},
 ) {
     A4Theme {
         A4SettingsContent(
@@ -107,6 +109,8 @@ fun A4SettingsScreen(
             onOpenPerAppProxy = onOpenPerAppProxy,
             busy = busy,
             onImportSubscription = onImportSubscription,
+            isCheckingUpdate = isCheckingUpdate,
+            onCheckUpdate = onCheckUpdate,
         )
     }
 }
@@ -118,6 +122,8 @@ fun A4SettingsTab(
     onOpenPerAppProxy: () -> Unit,
     busy: Boolean,
     onImportSubscription: (String) -> Unit,
+    isCheckingUpdate: Boolean,
+    onCheckUpdate: () -> Unit,
 ) {
     A4SettingsContent(
         embedded = true,
@@ -126,6 +132,8 @@ fun A4SettingsTab(
         onOpenPerAppProxy = onOpenPerAppProxy,
         busy = busy,
         onImportSubscription = onImportSubscription,
+        isCheckingUpdate = isCheckingUpdate,
+        onCheckUpdate = onCheckUpdate,
     )
 }
 
@@ -137,6 +145,8 @@ private fun A4SettingsContent(
     onOpenPerAppProxy: () -> Unit,
     busy: Boolean,
     onImportSubscription: (String) -> Unit,
+    isCheckingUpdate: Boolean,
+    onCheckUpdate: () -> Unit,
 ) {
     if (!embedded) BackHandler(onBack = onBackClick)
 
@@ -305,6 +315,12 @@ private fun A4SettingsContent(
                     title = "Журнал",
                     description = "ошибки и события подключения",
                     onClick = onOpenLogcat,
+                )
+                HorizontalDivider(color = A4Border)
+                SettingsLinkRow(
+                    title = "Проверить обновления",
+                    description = if (isCheckingUpdate) "проверяем…" else "текущая версия ${BuildConfig.VERSION_NAME}",
+                    onClick = onCheckUpdate,
                 )
                 HorizontalDivider(color = A4Border)
                 SettingsInfoRow("Версия", BuildConfig.VERSION_NAME)

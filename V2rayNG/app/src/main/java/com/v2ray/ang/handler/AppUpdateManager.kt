@@ -13,19 +13,33 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
 
+sealed interface UpdateCheckResult {
+    data class Available(val update: AppUpdate) : UpdateCheckResult
+    data object UpToDate : UpdateCheckResult
+    data object Failed : UpdateCheckResult
+}
+
 object AppUpdateManager {
     private const val UPDATE_DIRECTORY = "updates"
 
-    suspend fun checkForUpdate(context: Context): AppUpdate? = withContext(Dispatchers.IO) {
-        val body = DirectNetworkHttp.getText(context, AppConfig.APP_UPDATE_MANIFEST_URL, 5_000)
-            ?: return@withContext null
+    suspend fun checkForUpdate(context: Context): AppUpdate? =
+        (check(context) as? UpdateCheckResult.Available)?.update
 
-        val update = JsonUtil.fromJsonSafe(body, AppUpdate::class.java) ?: return@withContext null
+    /** Отличает «обновлений нет» от «не удалось проверить» — нужно для ручной проверки. */
+    suspend fun check(context: Context): UpdateCheckResult = withContext(Dispatchers.IO) {
+        val body = DirectNetworkHttp.getText(context, AppConfig.APP_UPDATE_MANIFEST_URL, 5_000)
+            ?: return@withContext UpdateCheckResult.Failed
+
+        val update = JsonUtil.fromJsonSafe(body, AppUpdate::class.java) ?: return@withContext UpdateCheckResult.Failed
         if (!isValid(update)) {
             LogUtil.w(AppConfig.TAG, "Ignoring invalid app update manifest")
-            return@withContext null
+            return@withContext UpdateCheckResult.Failed
         }
-        update.takeIf { it.versionCode > currentVersionCode(context) }
+        if (update.versionCode > currentVersionCode(context)) {
+            UpdateCheckResult.Available(update)
+        } else {
+            UpdateCheckResult.UpToDate
+        }
     }
 
     suspend fun download(

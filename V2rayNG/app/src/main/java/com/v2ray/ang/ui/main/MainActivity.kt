@@ -40,11 +40,13 @@ import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.PermissionType
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastError
+import com.v2ray.ang.extension.toastInfo
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.AppUpdateManager
 import com.v2ray.ang.handler.AppPolicyManager
 import com.v2ray.ang.handler.AppPolicyState
+import com.v2ray.ang.handler.UpdateCheckResult
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.handler.SettingsManager
@@ -91,6 +93,7 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private var appUpdate by mutableStateOf<AppUpdate?>(null)
+    private var isCheckingUpdate by mutableStateOf(false)
     private var isDownloadingUpdate by mutableStateOf(false)
     private var updateDownloadProgress by mutableStateOf(0f)
     private var showInstallPermissionReminder by mutableStateOf(false)
@@ -223,6 +226,8 @@ class MainActivity : HelperBaseComponentActivity() {
             isDownloadingUpdate = isDownloadingUpdate,
             downloadProgress = updateDownloadProgress,
             onInstallUpdate = ::downloadAndInstallUpdate,
+            isCheckingUpdate = isCheckingUpdate,
+            onCheckUpdate = ::checkForAppUpdateManually,
         )
         if (showInstallPermissionReminder) {
             ConfirmDialog(
@@ -273,6 +278,25 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun checkForAppUpdate() {
         lifecycleScope.launch {
             appUpdate = AppUpdateManager.checkForUpdate(this@MainActivity)
+        }
+    }
+
+    /** Ручная проверка из настроек: в отличие от стартовой, всегда сообщает результат. */
+    private fun checkForAppUpdateManually() {
+        if (isCheckingUpdate) return
+
+        isCheckingUpdate = true
+        lifecycleScope.launch {
+            val result = AppUpdateManager.check(this@MainActivity)
+            isCheckingUpdate = false
+            when (result) {
+                is UpdateCheckResult.Available -> {
+                    appUpdate = result.update
+                    toastInfo(getString(R.string.update_available, result.update.versionName))
+                }
+                UpdateCheckResult.UpToDate -> toastSuccess(R.string.update_up_to_date)
+                UpdateCheckResult.Failed -> toastError(R.string.update_check_failed)
+            }
         }
     }
 

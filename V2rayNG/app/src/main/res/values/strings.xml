@@ -106,6 +106,9 @@
     <string name="toast_failure">Failure</string>
     <string name="update_unknown_sources_title">Enable install permission</string>
     <string name="update_unknown_sources_message">To install the update, allow this app to install unknown apps in the next screen.</string>
+    <string name="update_available">Update available: %1$s</string>
+    <string name="update_up_to_date">You have the latest version</string>
+    <string name="update_check_failed">Could not check for updates</string>
     <string name="update_unknown_sources_action">Open settings</string>
     <string name="toast_none_data">No data available</string>
     <string name="toast_incorrect_protocol">Incorrect protocol</string>

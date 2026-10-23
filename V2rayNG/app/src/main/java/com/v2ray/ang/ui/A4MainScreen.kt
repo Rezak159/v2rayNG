@@ -189,6 +189,8 @@ fun A4MainScreen(
     isDownloadingUpdate: Boolean,
     downloadProgress: Float,
     onInstallUpdate: () -> Unit,
+    isCheckingUpdate: Boolean,
+    onCheckUpdate: () -> Unit,
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
     val isLoading by mainViewModel.isLoading.collectAsStateWithLifecycle()
@@ -229,6 +231,8 @@ fun A4MainScreen(
                     paidRanOut = paidRanOut,
                     isLoading = isLoading,
                     onImportSubscription = onImportSubscription,
+                    isCheckingUpdate = isCheckingUpdate,
+                    onCheckUpdate = onCheckUpdate,
                 )
             }
             Column(
@@ -441,6 +445,8 @@ private fun A4AppHome(
     paidRanOut: Boolean,
     isLoading: Boolean,
     onImportSubscription: (String) -> Unit,
+    isCheckingUpdate: Boolean,
+    onCheckUpdate: () -> Unit,
 ) {
     val servers by mainViewModel.serversForGroup(selectedGroupId).collectAsStateWithLifecycle()
     // speed/session держим как State и отдаём вниз лямбдами: тогда тик раз в секунду
@@ -583,6 +589,8 @@ private fun A4AppHome(
                                 onOpenPerAppProxy = onOpenPerAppProxy,
                                 busy = isLoading,
                                 onImportSubscription = onImportSubscription,
+                                isCheckingUpdate = isCheckingUpdate,
+                                onCheckUpdate = onCheckUpdate,
                             )
                         }
                     }
