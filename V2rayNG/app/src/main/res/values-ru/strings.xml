@@ -106,7 +106,6 @@
     <string name="toast_failure">Ошибка</string>
     <string name="update_unknown_sources_title">Разрешите установку</string>
     <string name="update_unknown_sources_message">Чтобы установить обновление, включите на следующем экране разрешение на установку из неизвестных источников для этого приложения.</string>
-    <string name="update_available">Доступна версия %1$s</string>
     <string name="update_up_to_date">У вас последняя версия</string>
     <string name="update_check_failed">Не удалось проверить обновления</string>
     <string name="update_unknown_sources_action">Открыть настройки</string>

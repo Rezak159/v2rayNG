@@ -51,6 +51,12 @@ object AppUpdateManager {
 
         val directory = File(context.cacheDir, UPDATE_DIRECTORY).apply { mkdirs() }
         val target = File(directory, "a4vpn-${update.versionCode}.apk")
+        // Файл уже скачан (например, процесс перезапустился после выдачи разрешения
+        // на установку) — проверяем хеш и не качаем заново.
+        if (target.exists() && sha256(target) == update.sha256.lowercase()) {
+            onProgress(1f)
+            return@withContext target
+        }
         val temporary = File(directory, "a4vpn-${update.versionCode}.apk.part")
         temporary.delete()
 
@@ -69,6 +75,7 @@ object AppUpdateManager {
         }
 
         if (target.exists()) target.delete()
+        directory.listFiles()?.filter { it != temporary && it != target }?.forEach { it.delete() }
         if (!temporary.renameTo(target)) {
             temporary.delete()
             return@withContext null

@@ -135,7 +135,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
-import com.v2ray.ang.dto.AppUpdate
 import com.v2ray.ang.dto.entities.ServersCache
 import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.handler.AngConfigManager
@@ -185,10 +184,6 @@ fun A4MainScreen(
     clipboardKeyAvailable: Boolean,
     onClipboardKeyConnect: () -> Unit,
     onClipboardKeyDismiss: () -> Unit,
-    appUpdate: AppUpdate?,
-    isDownloadingUpdate: Boolean,
-    downloadProgress: Float,
-    onInstallUpdate: () -> Unit,
     isCheckingUpdate: Boolean,
     onCheckUpdate: () -> Unit,
 ) {
@@ -242,14 +237,6 @@ fun A4MainScreen(
                     .padding(horizontal = 20.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                appUpdate?.let { update ->
-                    A4UpdateBanner(
-                        update = update,
-                        isDownloading = isDownloadingUpdate,
-                        downloadProgress = downloadProgress,
-                        onClick = onInstallUpdate,
-                    )
-                }
                 AnimatedVisibility(visible = clipboardKeyAvailable) {
                     A4ClipboardKeyBanner(
                         busy = isLoading,
@@ -257,73 +244,6 @@ fun A4MainScreen(
                         onDismiss = onClipboardKeyDismiss,
                     )
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun A4UpdateBanner(
-    update: AppUpdate,
-    isDownloading: Boolean,
-    downloadProgress: Float,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(A4Ink)
-            .clickable(enabled = !isDownloading, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Rounded.ArrowDownward,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    if (isDownloading) "Скачиваем обновление…" else "Доступно обновление ${update.versionName}",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White,
-                )
-                if (!isDownloading && update.notes.isNotBlank()) {
-                    Text(
-                        update.notes,
-                        maxLines = 1,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.72f),
-                    )
-                }
-            }
-            Spacer(Modifier.width(10.dp))
-            Text(
-                if (isDownloading) "${(downloadProgress * 100).roundToInt()}%" else "ОБНОВИТЬ",
-                style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 0.5.sp),
-                color = A4Red,
-            )
-        }
-        if (isDownloading) {
-            Spacer(Modifier.height(10.dp))
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color.White.copy(alpha = 0.18f)),
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth(downloadProgress.coerceIn(0f, 1f))
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(A4Red),
-                )
             }
         }
     }
@@ -817,7 +737,10 @@ private fun A4BottomNav(
                                 t.label,
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontSize = 11.sp,
-                                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    // Разрядка 2sp из labelSmall рассчитана на латинские капсы,
+                                    // на кириллице буквы разъезжаются.
+                                    letterSpacing = 0.2.sp,
                                 ),
                                 color = color,
                             )

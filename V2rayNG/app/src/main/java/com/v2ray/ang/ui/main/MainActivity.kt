@@ -40,7 +40,6 @@ import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.PermissionType
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastError
-import com.v2ray.ang.extension.toastInfo
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.AppUpdateManager
@@ -51,6 +50,7 @@ import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.ui.A4MainScreen
+import com.v2ray.ang.ui.A4UpdateDialog
 import com.v2ray.ang.ui.AboutActivity
 import com.v2ray.ang.ui.backup.BackupActivity
 import com.v2ray.ang.ui.base.HelperBaseComponentActivity
@@ -93,6 +93,7 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private var appUpdate by mutableStateOf<AppUpdate?>(null)
+    private var showUpdateDialog by mutableStateOf(false)
     private var isCheckingUpdate by mutableStateOf(false)
     private var isDownloadingUpdate by mutableStateOf(false)
     private var updateDownloadProgress by mutableStateOf(0f)
@@ -222,13 +223,19 @@ class MainActivity : HelperBaseComponentActivity() {
             clipboardKeyAvailable = clipboardSubLink != null,
             onClipboardKeyConnect = ::connectClipboardKey,
             onClipboardKeyDismiss = ::dismissClipboardKey,
-            appUpdate = appUpdate,
-            isDownloadingUpdate = isDownloadingUpdate,
-            downloadProgress = updateDownloadProgress,
-            onInstallUpdate = ::downloadAndInstallUpdate,
             isCheckingUpdate = isCheckingUpdate,
             onCheckUpdate = ::checkForAppUpdateManually,
         )
+        val update = appUpdate
+        if (showUpdateDialog && update != null) {
+            A4UpdateDialog(
+                update = update,
+                isDownloading = isDownloadingUpdate,
+                downloadProgress = updateDownloadProgress,
+                onUpdate = ::downloadAndInstallUpdate,
+                onDismiss = { showUpdateDialog = false },
+            )
+        }
         if (showInstallPermissionReminder) {
             ConfirmDialog(
                 title = getString(R.string.update_unknown_sources_title),
@@ -243,10 +250,11 @@ class MainActivity : HelperBaseComponentActivity() {
                         ),
                     )
                 },
-                onDismiss = {
-                    showInstallPermissionReminder = false
-                    pendingUpdateApk = null
-                },
+                // ConfirmDialog зовёт onDismiss сразу после onConfirm, поэтому apk здесь
+                // не сбрасываем: он нужен, чтобы поставить обновление после возврата
+                // из настроек. Если человек откажется, файл останется в кэше и при
+                // следующем нажатии «Обновить» будет взят оттуда без повторной загрузки.
+                onDismiss = { showInstallPermissionReminder = false },
             )
         }
     }
@@ -278,6 +286,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun checkForAppUpdate() {
         lifecycleScope.launch {
             appUpdate = AppUpdateManager.checkForUpdate(this@MainActivity)
+            showUpdateDialog = appUpdate != null
         }
     }
 
@@ -292,7 +301,7 @@ class MainActivity : HelperBaseComponentActivity() {
             when (result) {
                 is UpdateCheckResult.Available -> {
                     appUpdate = result.update
-                    toastInfo(getString(R.string.update_available, result.update.versionName))
+                    showUpdateDialog = true
                 }
                 UpdateCheckResult.UpToDate -> toastSuccess(R.string.update_up_to_date)
                 UpdateCheckResult.Failed -> toastError(R.string.update_check_failed)
@@ -315,6 +324,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 toastError(R.string.toast_failure)
                 return@launch
             }
+            showUpdateDialog = false
             requestApkInstallation(apk)
         }
     }

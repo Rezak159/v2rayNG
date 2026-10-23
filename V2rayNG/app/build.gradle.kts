@@ -38,8 +38,8 @@ android {
         applicationId = "com.a4vpn.app.alpha"
         minSdk = 24
         targetSdk = 37
-        versionCode = 12
-        versionName = "0.5.4"
+        versionCode = 13
+        versionName = "0.5.5"
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {
