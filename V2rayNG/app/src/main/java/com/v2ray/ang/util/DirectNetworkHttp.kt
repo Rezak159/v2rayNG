@@ -10,16 +10,11 @@ import java.net.URL
 
 /** Requests A4VPN service endpoints through Wi-Fi/mobile, never through this app's VPN network. */
 object DirectNetworkHttp {
-    fun getText(context: Context, url: String, timeout: Int): String? = runCatching {
-        openConnection(context, url, timeout)?.let { connection ->
-            try {
-                if (connection.responseCode !in 200..299) return@let null
-                connection.inputStream.bufferedReader().use { it.readText() }
-            } finally {
-                connection.disconnect()
-            }
+    fun getText(context: Context, url: String, timeout: Int): String? =
+        request(context, url, timeout) { connection ->
+            if (connection.responseCode !in 200..299) return@request null
+            connection.inputStream.bufferedReader().use { it.readText() }
         }
-    }.onFailure { LogUtil.w("DirectNetworkHttp", "A4VPN service request failed: ${it.message}") }.getOrNull()
 
     fun downloadToFile(
         context: Context,
@@ -27,27 +22,23 @@ object DirectNetworkHttp {
         target: File,
         timeout: Int,
         onProgress: (Long, Long) -> Unit,
-    ): Boolean = openConnection(context, url, timeout)?.let { connection ->
-        try {
-            if (connection.responseCode !in 200..299) return@let false
-            val contentLength = connection.contentLengthLong
-            connection.inputStream.use { input ->
-                target.outputStream().use { output ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    var bytesRead = 0L
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        output.write(buffer, 0, read)
-                        bytesRead += read
-                        onProgress(bytesRead, contentLength)
-                    }
+    ): Boolean = request(context, url, timeout) { connection ->
+        if (connection.responseCode !in 200..299) return@request null
+        val contentLength = connection.contentLengthLong
+        connection.inputStream.use { input ->
+            target.outputStream().use { output ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var bytesRead = 0L
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    output.write(buffer, 0, read)
+                    bytesRead += read
+                    onProgress(bytesRead, contentLength)
                 }
             }
-            true
-        } finally {
-            connection.disconnect()
         }
+        true
     } ?: false
 
     fun postJson(context: Context, url: String, json: String, timeout: Int = 3_000) {
@@ -106,13 +97,54 @@ object DirectNetworkHttp {
         }
     }.getOrNull()
 
-    private fun directNetwork(context: Context): Network? {
-        val connectivity = context.getSystemService(ConnectivityManager::class.java) ?: return null
-        return connectivity.allNetworks.firstOrNull { network ->
-            connectivity.getNetworkCapabilities(network)?.let { capabilities ->
-                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-            } == true
+    /**
+     * GET-запрос с запасными путями: сначала по каждой обычной сети (Wi-Fi/мобильная, сперва
+     * та, где есть интернет), и только если не вышло — по маршруту системы по умолчанию.
+     * Последний путь нужен, когда напрямую до сервера не достучаться (провайдер режет
+     * соединение, чужой VPN не пускает мимо себя): через включённый VPN запрос обычно проходит.
+     */
+    private fun <T : Any> request(
+        context: Context,
+        url: String,
+        timeout: Int,
+        handle: (HttpURLConnection) -> T?,
+    ): T? {
+        val openers = directNetworks(context).map { network ->
+            { network.openConnection(URL(url)) as HttpURLConnection }
+        } + { URL(url).openConnection() as HttpURLConnection }
+
+        for (open in openers) {
+            val result = runCatching {
+                val connection = open().apply {
+                    requestMethod = "GET"
+                    connectTimeout = timeout
+                    readTimeout = timeout
+                    useCaches = false
+                }
+                try {
+                    handle(connection)
+                } finally {
+                    connection.disconnect()
+                }
+            }.onFailure { LogUtil.w("DirectNetworkHttp", "A4VPN service request failed: ${it.message}") }.getOrNull()
+            if (result != null) return result
         }
+        return null
+    }
+
+    private fun directNetwork(context: Context): Network? = directNetworks(context).firstOrNull()
+
+    /** Сети с интернетом без VPN; проверенные системой идут первыми. */
+    private fun directNetworks(context: Context): List<Network> {
+        val connectivity = context.getSystemService(ConnectivityManager::class.java) ?: return emptyList()
+        return connectivity.allNetworks
+            .mapNotNull { network ->
+                val capabilities = connectivity.getNetworkCapabilities(network) ?: return@mapNotNull null
+                val usable = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                if (usable) network to capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) else null
+            }
+            .sortedByDescending { (_, validated) -> validated }
+            .map { (network, _) -> network }
     }
 }
