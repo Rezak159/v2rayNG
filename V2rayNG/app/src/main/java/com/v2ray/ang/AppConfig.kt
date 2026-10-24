@@ -71,6 +71,9 @@ object AppConfig {
     const val TELEMETRY_URL = "https://app.a4vpn.net/telemetry/subscription-refresh"
     const val BYPASS_APP_LIST_URL = "https://app.a4vpn.net/routing/bypass-packages.txt"
     const val PREF_INSTALLATION_ID = "pref_installation_id"
+    // Пакеты, которые серверный список впервые увёл из туннеля, а мы ещё не рассказали человеку.
+    // Молча менять маршрутизацию нельзя: ключ живёт до показа карточки и потом стирается.
+    const val PREF_RECOMMENDED_BYPASS_ANNOUNCE = "pref_recommended_bypass_announce"
     const val PREF_APP_POLICY = "pref_app_policy"
     const val PREF_APP_POLICY_FIRST_SEEN = "pref_app_policy_first_seen"
     const val PREF_SERVER_BYPASS_APP_SET = "pref_server_bypass_app_set"

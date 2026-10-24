@@ -163,12 +163,16 @@
     <string name="msg_enter_keywords">Enter keywords</string>
     <string name="switch_bypass_apps_mode">Bypass Mode</string>
     <string name="menu_item_select_proxy_app">Auto-select apps to be proxied</string>
+    <string name="menu_item_select_recommended_app">Exclude recommended Russian apps</string>
     <string name="msg_downloading_content">Downloading content</string>
     <string name="menu_item_export_proxy_app">Export to Clipboard</string>
     <string name="menu_item_import_proxy_app">Import from Clipboard</string>
     <string name="per_app_proxy_settings">Per-app settings</string>
     <string name="per_app_proxy_settings_enable">Enable per-app</string>
     <string name="per_app_proxy_settings_description">Checked apps below will bypass the VPN and connect directly.</string>
+    <string name="per_app_recommended_title">Recommended for direct connection</string>
+    <string name="per_app_recommended_description">%1$d installed Russian apps track VPN use and can learn your server address. Banks and government services also work better outside the tunnel.</string>
+    <string name="per_app_recommended_action">Exclude all</string>
     <string name="app_picker_unknown_app">Unknown app (UID not recognized)</string>
 
     <!-- Preferences -->

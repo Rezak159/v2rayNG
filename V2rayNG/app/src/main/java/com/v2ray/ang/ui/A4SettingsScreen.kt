@@ -57,6 +57,7 @@ import com.v2ray.ang.handler.GeoUpdater
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.MmkvManager.rememberMmkvBool
 import com.v2ray.ang.handler.PlanManager
+import com.v2ray.ang.handler.BypassAppListManager
 import com.v2ray.ang.handler.MmkvManager.rememberMmkvString
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
@@ -156,6 +157,8 @@ private fun A4SettingsContent(
     var showSpeed by rememberMmkvBool(AppConfig.PREF_SPEED_ENABLED, false)
     var liquidGlass by rememberMmkvBool(AppConfig.PREF_LIQUID_GLASS_ENABLED, true)
     var logLevel by rememberMmkvString(AppConfig.PREF_LOGLEVEL, "warning")
+    // Пересчитываем при каждом заходе на вкладку: список правится на соседнем экране.
+    val excludedApps = remember { BypassAppListManager.excludedCount() }
 
     val subscription = remember { activeSubscription() }
     // Платного доступа нет (не покупали или он кончился) — человек сидит на
@@ -252,7 +255,13 @@ private fun A4SettingsContent(
                 HorizontalDivider(color = A4Border)
                 SettingsLinkRow(
                     title = "Исключения по приложениям",
-                    description = "какие приложения не пускать через VPN",
+                    // Список правит сервер (BypassAppListManager), поэтому показываем не
+                    // «настрой это», а текущее состояние — иначе человек не знает, что там уже есть.
+                    description = if (excludedApps > 0) {
+                        "${appCountPhrase(excludedApps)} мимо VPN: банки, госуслуги, маркетплейсы"
+                    } else {
+                        "какие приложения не пускать через VPN"
+                    },
                     onClick = onOpenPerAppProxy,
                 )
                 HorizontalDivider(color = A4Border)

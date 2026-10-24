@@ -24,6 +24,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,6 +55,7 @@ import com.v2ray.ang.util.Utils
 private enum class PerAppMenuAction(@StringRes val labelRes: Int) {
     SelectAll(R.string.menu_item_select_all),
     InvertSelection(R.string.menu_item_invert_selection),
+    SelectRecommendedApps(R.string.menu_item_select_recommended_app),
     SelectProxyApps(R.string.menu_item_select_proxy_app),
     ImportSelection(R.string.menu_item_import_proxy_app),
     ExportSelection(R.string.menu_item_export_proxy_app)
@@ -74,18 +76,21 @@ class PerAppProxyActivity : BaseComponentActivity() {
         val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
         val blacklist by viewModel.blacklist.collectAsStateWithLifecycle()
         val perAppProxyEnabled by viewModel.perAppProxyEnabled.collectAsStateWithLifecycle()
+        val recommendedPendingCount by viewModel.recommendedPendingCount.collectAsStateWithLifecycle()
 
         PerAppProxyScreen(
             apps = apps,
             isLoading = isLoading,
             blacklist = blacklist,
             perAppProxyEnabled = perAppProxyEnabled,
+            recommendedPendingCount = recommendedPendingCount,
             onBackClick = { finish() },
             onPerAppProxyChanged = { viewModel.setPerAppProxyEnabled(it) },
             onToggleApp = { viewModel.toggle(it) },
             onSearch = { viewModel.filterApps(it) },
             onSelectAll = { viewModel.selectAll() },
             onInvertSelection = { viewModel.invertSelection() },
+            onSelectRecommended = { viewModel.selectRecommended() },
             onSelectProxyAuto = { viewModel.selectProxyAppAuto(this) },
             onImportProxyApp = {
                 val content = Utils.getClipboard(applicationContext)
@@ -106,12 +111,14 @@ fun PerAppProxyScreen(
     isLoading: Boolean,
     blacklist: Set<String>,
     perAppProxyEnabled: Boolean,
+    recommendedPendingCount: Int,
     onBackClick: () -> Unit,
     onPerAppProxyChanged: (Boolean) -> Unit,
     onToggleApp: (String) -> Unit,
     onSearch: (String) -> Unit,
     onSelectAll: () -> Unit,
     onInvertSelection: () -> Unit,
+    onSelectRecommended: () -> Unit,
     onSelectProxyAuto: () -> Unit,
     onImportProxyApp: () -> Unit,
     onExportProxyApp: () -> Unit
@@ -170,6 +177,7 @@ fun PerAppProxyScreen(
                                 when (action) {
                                     PerAppMenuAction.SelectAll -> onSelectAll()
                                     PerAppMenuAction.InvertSelection -> onInvertSelection()
+                                    PerAppMenuAction.SelectRecommendedApps -> onSelectRecommended()
                                     PerAppMenuAction.SelectProxyApps -> onSelectProxyAuto()
                                     PerAppMenuAction.ImportSelection -> onImportProxyApp()
                                     PerAppMenuAction.ExportSelection -> onExportProxyApp()
@@ -221,6 +229,14 @@ fun PerAppProxyScreen(
             }
             AppDivider()
 
+            if (recommendedPendingCount > 0) {
+                RecommendedAppsBanner(
+                    count = recommendedPendingCount,
+                    onSelectRecommended = onSelectRecommended
+                )
+                AppDivider()
+            }
+
             LazyColumn(
                 state = listState,
                 modifier = Modifier
@@ -238,6 +254,42 @@ fun PerAppProxyScreen(
                     )
                     ItemDivider()
                 }
+            }
+        }
+    }
+}
+
+/**
+ * a4vpn: подсказка со списком российских приложений, которые стоит увести мимо туннеля.
+ *
+ * Показывается, только пока на устройстве есть неисключённые приложения из рекомендованного списка,
+ * — после нажатия баннер исчезает сам.
+ */
+@Composable
+private fun RecommendedAppsBanner(
+    count: Int,
+    onSelectRecommended: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Text(
+                text = stringResource(R.string.per_app_recommended_title),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = stringResource(R.string.per_app_recommended_description, count),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            TextButton(
+                onClick = onSelectRecommended,
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text(text = stringResource(R.string.per_app_recommended_action))
             }
         }
     }

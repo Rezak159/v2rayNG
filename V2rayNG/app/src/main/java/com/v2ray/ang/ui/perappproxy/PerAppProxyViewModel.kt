@@ -48,6 +48,10 @@ class PerAppProxyViewModel(application: Application) : BaseViewModel(application
     )
     val bypassApps: StateFlow<Boolean> = _bypassApps.asStateFlow()
 
+    // a4vpn: сколько установленных приложений из серверного списка обхода сейчас идёт через туннель.
+    private val _recommendedPendingCount = MutableStateFlow(0)
+    val recommendedPendingCount: StateFlow<Int> = _recommendedPendingCount.asStateFlow()
+
     // Cached full list for filtering
     private var appsAll: List<AppInfo>? = null
     private var currentQuery = ""
@@ -80,6 +84,31 @@ class PerAppProxyViewModel(application: Application) : BaseViewModel(application
             MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET, newBlacklist.toMutableSet())
             newBlacklist
         }
+        refreshRecommendedPendingCount()
+    }
+
+    /**
+     * a4vpn: возвращает в обход все установленные приложения из серверного списка
+     * ([BypassAppListManager]), включая снятые человеком вручную.
+     *
+     * Ручной выбор не сбрасывается — рекомендованные пакеты только добавляются.
+     */
+    fun selectRecommended() {
+        val recommended = installedRecommended()
+        if (recommended.isEmpty()) return
+
+        replaceBlacklist(_blacklist.value + recommended)
+        enablePerAppProxyAndRestart()
+    }
+
+    private fun refreshRecommendedPendingCount() {
+        _recommendedPendingCount.value = (installedRecommended() - _blacklist.value).size
+    }
+
+    private fun installedRecommended(): Set<String> {
+        val installed = appsAll ?: return emptySet()
+        val recommended = BypassAppListManager.serverPackageNames()
+        return installed.mapNotNullTo(mutableSetOf()) { app -> app.packageName.takeIf { it in recommended } }
     }
 
     // Per‑app proxy switch
@@ -104,6 +133,7 @@ class PerAppProxyViewModel(application: Application) : BaseViewModel(application
                 }
                 appsAll = apps
                 _displayedApps.value = applyFilter(currentQuery)
+                refreshRecommendedPendingCount()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

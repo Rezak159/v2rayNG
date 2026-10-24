@@ -212,6 +212,9 @@ fun A4MainScreen(
                     onConnectFreeAccess = onConnectFreeAccess,
                 )
             } else {
+                // Про уведённые из туннеля приложения рассказываем только после того, как доступ
+                // настроен: на пустом экране входа карточка мешала бы главному действию.
+                A4BypassNotice(onOpenPerAppProxy = onOpenPerAppProxy)
                 A4AppHome(
                     mainViewModel = mainViewModel,
                     isRunning = state.isRunning,

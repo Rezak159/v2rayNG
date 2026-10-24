@@ -1,6 +1,7 @@
 package com.v2ray.ang.handler
 
 import android.content.Context
+import android.content.pm.PackageManager
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.helper.MessageHelper
 import com.v2ray.ang.util.DirectNetworkHttp
@@ -52,9 +53,34 @@ object BypassAppListManager {
         )
     }
 
+    /** Server-maintained packages, installed or not: the "recommended" list on the per-app screen. */
+    fun serverPackageNames(): Set<String> = serverPackages()
+
+    /** How many apps currently bypass the tunnel, for the settings row; 0 while per-app is off. */
+    fun excludedCount(): Int {
+        val active = MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY, false) &&
+            MmkvManager.decodeSettingsBool(AppConfig.PREF_BYPASS_APPS, true)
+        return if (active) MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET).orEmpty().size else 0
+    }
+
+    /**
+     * Packages the main-screen card has not told the person about yet (see A4BypassNotice).
+     * Empty means there is nothing to tell: already shown, or routing never changed.
+     */
+    fun pendingAnnouncement(): List<String> =
+        MmkvManager.decodeSettingsString(AppConfig.PREF_RECOMMENDED_BYPASS_ANNOUNCE)
+            ?.split('\n')
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+
+    fun markAnnounced() {
+        MmkvManager.encodeSettings(AppConfig.PREF_RECOMMENDED_BYPASS_ANNOUNCE, "")
+    }
+
     private fun applyServerPackages(context: Context, packages: Set<String>) {
         migrateLegacySelection()
         val previousSelection = MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET).orEmpty()
+        val firstServerList = serverPackages().isEmpty()
         MmkvManager.encodeSettings(AppConfig.PREF_SERVER_BYPASS_APP_SET, packages.toMutableSet())
 
         if (MmkvManager.decodeSettingsBool(AppConfig.PREF_BYPASS_APPS, true)) {
@@ -63,7 +89,27 @@ object BypassAppListManager {
             if (effective != previousSelection) {
                 MessageHelper.sendMsg2Service(context, AppConfig.MSG_STATE_RESTART, "")
             }
+            if (firstServerList) announceIfRouted(context, effective - previousSelection)
         }
+    }
+
+    /**
+     * Routing must not change silently. The first server list that actually moves installed
+     * apps out of the tunnel is queued for a one-time card; later updates are one more line
+     * in a list the person has already been told about.
+     */
+    private fun announceIfRouted(context: Context, added: Set<String>) {
+        if (!MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY, false)) return
+        val installed = added.filterTo(mutableSetOf()) { isInstalled(context, it) }
+        if (installed.isEmpty()) return
+        MmkvManager.encodeSettings(AppConfig.PREF_RECOMMENDED_BYPASS_ANNOUNCE, installed.joinToString("\n"))
+    }
+
+    private fun isInstalled(context: Context, packageName: String): Boolean = try {
+        context.packageManager.getPackageInfo(packageName, 0)
+        true
+    } catch (_: PackageManager.NameNotFoundException) {
+        false
     }
 
     private fun saveEffectiveSelection(

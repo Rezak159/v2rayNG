@@ -163,12 +163,16 @@
     <string name="msg_enter_keywords">Введите ключевое слово</string>
     <string name="switch_bypass_apps_mode">Режим обхода</string>
     <string name="menu_item_select_proxy_app">Автовыбор проксируемых приложений</string>
+    <string name="menu_item_select_recommended_app">Исключить российские приложения</string>
     <string name="msg_downloading_content">Загрузка данных</string>
     <string name="menu_item_export_proxy_app">Экспорт в буфер обмена</string>
     <string name="menu_item_import_proxy_app">Импорт из буфера обмена</string>
     <string name="per_app_proxy_settings">Выбор приложений</string>
     <string name="per_app_proxy_settings_enable">Использовать выбор приложений</string>
     <string name="per_app_proxy_settings_description">Отмеченные ниже приложения не будут ходить через VPN — соединятся напрямую.</string>
+    <string name="per_app_recommended_title">Рекомендуем пустить напрямую</string>
+    <string name="per_app_recommended_description">Найдено российских приложений: %1$d. Они отслеживают включённый VPN и могут узнать адрес вашего сервера, а банки и госсервисы вне туннеля работают стабильнее.</string>
+    <string name="per_app_recommended_action">Исключить все</string>
     <string name="app_picker_unknown_app">Неизвестное приложение (неопознанный UID)</string>
 
     <!-- Preferences -->
