@@ -8,3 +8,7 @@ a4.telegramBotUrl=https://t.me/<bot>
 
 # Сайт с инструкцией на случай, если Telegram не открывается.
 a4.siteUrl=https://<site>/
+
+# DSN проекта в нашем GlitchTip. Необязателен: без него диагностика выключена,
+# сборка проходит. В CI — переменная окружения A4_GLITCHTIP_DSN.
+a4.glitchtipDsn=https://<key>@<glitchtip-host>/<project-id>

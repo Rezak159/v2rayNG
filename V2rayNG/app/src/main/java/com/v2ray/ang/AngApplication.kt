@@ -8,6 +8,7 @@ import androidx.work.WorkManager
 import com.tencent.mmkv.MMKV
 import com.v2ray.ang.AppConfig.ANG_PACKAGE
 import com.v2ray.ang.handler.AppLocaleManager
+import com.v2ray.ang.handler.DiagnosticsReporter
 import com.v2ray.ang.handler.PlanManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.ui.compose.ThemeManager
@@ -40,6 +41,10 @@ class AngApplication : Application() {
         MMKV.initialize(this)
 
         AppLocaleManager.initialize(this)
+
+        // Диагностика поднимается в каждом процессе: падения ядра происходят
+        // в :RunSoLibV2RayDaemon, а не в UI. Без согласия ничего не стартует.
+        DiagnosticsReporter.init(this)
 
         // Initialize WorkManager with the custom configuration
         WorkManager.initialize(this, workManagerConfiguration)

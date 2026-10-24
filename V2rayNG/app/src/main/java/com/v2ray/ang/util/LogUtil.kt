@@ -2,6 +2,7 @@ package com.v2ray.ang.util
 
 import android.util.Log
 import com.v2ray.ang.AppConfig
+import com.v2ray.ang.handler.DiagnosticsReporter
 import com.v2ray.ang.handler.MmkvManager
 import java.util.Locale
 
@@ -53,6 +54,13 @@ object LogUtil {
     }
 
     private fun log(priority: Int, tag: String, message: String, throwable: Throwable? = null) {
+        // Хлебные крошки собираем до фильтра по уровню: контекст падения не должен
+        // зависеть от того, какой уровень журнала человек выставил в настройках.
+        // Отправляются они всё равно только при согласии на диагностику.
+        if (priority >= Log.WARN) {
+            DiagnosticsReporter.breadcrumb(tag, message)
+        }
+
         if (!isEnabled(priority)) return
 
         when {

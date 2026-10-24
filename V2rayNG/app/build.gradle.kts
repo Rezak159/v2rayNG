@@ -30,6 +30,13 @@ fun a4Endpoint(key: String, envName: String): String =
         )
     }
 
+/**
+ * Необязательный эндпоинт: пустое значение — легальное состояние. Диагностика
+ * без DSN просто не инициализируется, сборка при этом не должна падать.
+ */
+fun a4OptionalEndpoint(key: String, envName: String): String =
+    (a4Endpoints.getProperty(key) ?: System.getenv(envName))?.trim().orEmpty()
+
 android {
     namespace = "com.v2ray.ang"
     compileSdk = 37
@@ -69,6 +76,12 @@ android {
             "String",
             "SITE_URL",
             "\"${a4Endpoint("a4.siteUrl", "A4_SITE_URL")}\"",
+        )
+
+        buildConfigField(
+            "String",
+            "GLITCHTIP_DSN",
+            "\"${a4OptionalEndpoint("a4.glitchtipDsn", "A4_GLITCHTIP_DSN")}\"",
         )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -223,6 +236,9 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.coil.compose)
+
+    // Диагностика: Sentry-совместимый SDK, отчёты уходят в наш GlitchTip
+    implementation(libs.sentry.android)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 

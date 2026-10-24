@@ -65,6 +65,32 @@ object DirectNetworkHttp {
         }.onFailure { LogUtil.w("DirectNetworkHttp", "A4VPN service request failed: ${it.message}") }
     }
 
+    /**
+     * Отправляет произвольное тело с дополнительными заголовками и возвращает код ответа
+     * (null — до сервера не дошли). Нужен диагностике: конверты Sentry — не JSON, а
+     * заголовки задаёт сам SDK.
+     */
+    fun postBytes(
+        context: Context,
+        url: String,
+        body: ByteArray,
+        contentType: String,
+        headers: Map<String, String> = emptyMap(),
+        timeout: Int = 10_000,
+    ): Int? = runCatching {
+        openConnection(context, url, timeout, "POST")?.let { connection ->
+            try {
+                headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
+                connection.setRequestProperty("Content-Type", contentType)
+                connection.doOutput = true
+                connection.outputStream.use { it.write(body) }
+                connection.responseCode
+            } finally {
+                connection.disconnect()
+            }
+        }
+    }.onFailure { LogUtil.w("DirectNetworkHttp", "A4VPN service request failed: ${it.message}") }.getOrNull()
+
     private fun openConnection(
         context: Context,
         url: String,

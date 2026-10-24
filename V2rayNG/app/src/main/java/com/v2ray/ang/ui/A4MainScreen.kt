@@ -212,9 +212,13 @@ fun A4MainScreen(
                     onConnectFreeAccess = onConnectFreeAccess,
                 )
             } else {
-                // Про уведённые из туннеля приложения рассказываем только после того, как доступ
-                // настроен: на пустом экране входа карточка мешала бы главному действию.
-                A4BypassNotice(onOpenPerAppProxy = onOpenPerAppProxy)
+                // Спрашиваем про диагностику только после того, как доступ настроен:
+                // на пустом экране входа этот диалог мешал бы главному действию.
+                var diagnosticsDone by remember { mutableStateOf(false) }
+                A4DiagnosticsConsent(onDismissed = { diagnosticsDone = true })
+                // Про уведённые из туннеля приложения рассказываем следующим шагом, а не поверх
+                // вопроса о диагностике: два диалога в стопке человек просто закрывает не читая.
+                if (diagnosticsDone) A4BypassNotice(onOpenPerAppProxy = onOpenPerAppProxy)
                 A4AppHome(
                     mainViewModel = mainViewModel,
                     isRunning = state.isRunning,

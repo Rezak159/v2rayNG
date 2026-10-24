@@ -373,6 +373,15 @@
                 android:resource="@xml/cache_paths" />
         </provider>
 
+        <!--
+            Sentry поднимает себя сам из ContentProvider ещё до Application и падает, если DSN не
+            лежит в манифесте. Нам это не подходит: DSN опциональный, а инициализация обязана быть
+            строго после согласия (см. DiagnosticsReporter) и через свой транспорт мимо туннеля.
+        -->
+        <meta-data
+            android:name="io.sentry.auto-init"
+            android:value="false" />
+
     </application>
 
 </manifest>

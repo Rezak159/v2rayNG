@@ -71,6 +71,13 @@ object AppConfig {
     const val TELEMETRY_URL = "https://app.a4vpn.net/telemetry/subscription-refresh"
     const val BYPASS_APP_LIST_URL = "https://app.a4vpn.net/routing/bypass-packages.txt"
     const val PREF_INSTALLATION_ID = "pref_installation_id"
+    // Диагностика: DSN нашего GlitchTip. Пустая строка — сборка без диагностики,
+    // задаётся в a4.properties (см. блок a4Endpoint в app/build.gradle.kts).
+    const val GLITCHTIP_DSN = BuildConfig.GLITCHTIP_DSN
+    // Согласие на отправку отчётов об ошибках. Строго opt-in: пока человек не
+    // ответил, ничего не собираем и не отправляем.
+    const val PREF_DIAGNOSTICS_ENABLED = "pref_diagnostics_enabled"
+    const val PREF_DIAGNOSTICS_ASKED = "pref_diagnostics_asked"
     // Пакеты, которые серверный список впервые увёл из туннеля, а мы ещё не рассказали человеку.
     // Молча менять маршрутизацию нельзя: ключ живёт до показа карточки и потом стирается.
     const val PREF_RECOMMENDED_BYPASS_ANNOUNCE = "pref_recommended_bypass_announce"

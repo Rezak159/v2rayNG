@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.v2ray.ang.AppConfig
+import com.v2ray.ang.handler.DiagnosticsReporter
 import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.handler.GeoUpdater
@@ -157,6 +158,9 @@ private fun A4SettingsContent(
     var showSpeed by rememberMmkvBool(AppConfig.PREF_SPEED_ENABLED, false)
     var liquidGlass by rememberMmkvBool(AppConfig.PREF_LIQUID_GLASS_ENABLED, true)
     var logLevel by rememberMmkvString(AppConfig.PREF_LOGLEVEL, "warning")
+    // Не через rememberMmkvBool: переключатель обязан ещё и поднимать/гасить SDK.
+    var diagnostics by remember { mutableStateOf(DiagnosticsReporter.isEnabled()) }
+
     // Пересчитываем при каждом заходе на вкладку: список правится на соседнем экране.
     val excludedApps = remember { BypassAppListManager.excludedCount() }
 
@@ -325,6 +329,21 @@ private fun A4SettingsContent(
                     description = "ошибки и события подключения",
                     onClick = onOpenLogcat,
                 )
+                if (DiagnosticsReporter.isConfigured()) {
+                    HorizontalDivider(color = A4Border)
+                    SettingsToggleRow(
+                        title = "Отчёты об ошибках",
+                        description = "присылать анонимные отчёты о сбоях; адреса серверов и ключи в них не попадают",
+                        checked = diagnostics,
+                        onCheckedChange = {
+                            haptic.performHapticFeedback(
+                                if (it) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff,
+                            )
+                            diagnostics = it
+                            DiagnosticsReporter.setEnabled(context, it)
+                        },
+                    )
+                }
                 HorizontalDivider(color = A4Border)
                 SettingsLinkRow(
                     title = "Проверить обновления",
